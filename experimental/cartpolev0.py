@@ -25,7 +25,6 @@ import torchvision.transforms as T
 # It has been shown that this greatly stabilizes and improves the DQN training procedure.
 
 # A named tuple representing a single transition in our environment.
-# (The word `transition` is also called `episode` in some other tutorials)
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 class ReplayMemory(object):
@@ -35,11 +34,11 @@ class ReplayMemory(object):
         self.position = 0
 
     def push(self, *args):
-        '''
+        """
         The args here stand for a transition.
         [*arg, arg is a tuple; **kwargs, kwargs is a dict]
-        '''
-        if len(self.memory) < self.capacity: # There's still some capacity.
+        """
+        if len(self.memory) < self.capacity:  # There's still some capacity.
             self.memory.append(None)
         self.memory[self.position] = Transition(*args)
         self.position += 1
@@ -261,6 +260,7 @@ def optimize_model():
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
     # for each batch state according to policy_net
+    # Get the Q value of each action in that state.
     state_action_values = policy_net(state_batch).gather(1, action_batch)
 
     # Compute V(s_{t+1}) for all next states.
