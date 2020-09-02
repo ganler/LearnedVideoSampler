@@ -9,7 +9,7 @@ from .yolov3.utils.datasets import *
 from .yolov3.utils.utils import *
 
 def get_device():
-    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return torch.device('cuda')
 
 cur_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), 'yolov3')
 
@@ -45,23 +45,26 @@ class CarCounter:
         else:
             raise Exception('Unknown config type! Maybe you can use `YOLO`')
 
-    def predict(self, im):
+    def process_image(self, im):
+        im = cv2.resize(im, self.config.resolution)
+        inp = im[:, :, ::-1].transpose(2, 0, 1)
+        inp = np.ascontiguousarray(inp, dtype=np.float32)
+        inp = torch.from_numpy(inp).to(get_device()).float() / 255.
+
+        if inp.ndimension() == 3:
+            inp = inp.unsqueeze(0)
+
+        return inp
+
+    def predict(self, inp):
         t1 = torch_utils.time_synchronized()
 
         with torch.no_grad():
-            im = cv2.resize(im, self.config.resolution)
-            inp = im[:, :, ::-1].transpose(2, 0, 1)
-            inp = np.ascontiguousarray(inp, dtype=np.float32)
-            inp = torch.from_numpy(inp).to(get_device()).float() / 255.
-
-            if inp.ndimension() == 3:
-                inp = inp.unsqueeze(0)
-
             pred = self.model(inp)[0]
-
             pred = non_max_suppression(pred, self.config.conf_thres, self.config.iou_thres, classes=[2, 5, 7])
 
-        print(f'Time elapsed: {1000 * (torch_utils.time_synchronized() - t1)} ms. Detected cars :=> {len(pred[0])}')
+        # for p in pred:
+        #     print(f'Time elapsed: {1000 * (torch_utils.time_synchronized() - t1)} ms. Detected cars :=> {len(p)}')
         return pred
 
     def viz(self, pred: torch.Tensor, img):
@@ -71,8 +74,8 @@ class CarCounter:
                 # Rescale boxes from imgsz to im0 size
                 # det[:, :4] = scale_coords(, det[:, :4], img.shape).round()
 
-                for *xyxy, conf, cls in reversed(det):
-                    label = '%s %.2f' % (self.names[int(cls)], conf)
+                for j, (*xyxy, conf, cls) in enumerate(reversed(det)):
+                    label = '[%i] %s %.2f' % (j, self.names[int(cls)], conf)
                     plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
 
         # Stream results
