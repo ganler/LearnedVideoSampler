@@ -45,6 +45,8 @@ class CarCounter:
         else:
             raise Exception('Unknown config type! Maybe you can use `YOLO`')
 
+
+    @torch.no_grad()
     def process_image(self, im):
         im = cv2.resize(im, self.config.resolution)
         inp = im[:, :, ::-1].transpose(2, 0, 1)
@@ -56,16 +58,18 @@ class CarCounter:
 
         return inp
 
-    def predict(self, inp):
-        t1 = torch_utils.time_synchronized()
 
-        with torch.no_grad():
-            pred = self.model(inp)[0]
-            pred = non_max_suppression(pred, self.config.conf_thres, self.config.iou_thres, classes=[2, 5, 7])
+    @torch.no_grad()
+    def predict(self, inp):
+        # t1 = torch_utils.time_synchronized()
+
+        pred = self.model(inp)[0]
+        pred = non_max_suppression(pred, self.config.conf_thres, self.config.iou_thres, classes=[2, 5, 7])
 
         # for p in pred:
         #     print(f'Time elapsed: {1000 * (torch_utils.time_synchronized() - t1)} ms. Detected cars :=> {len(p)}')
         return pred
+
 
     def viz(self, pred: torch.Tensor, img):
         img = cv2.resize(img, self.config.resolution)

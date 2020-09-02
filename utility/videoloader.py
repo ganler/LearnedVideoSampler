@@ -6,7 +6,6 @@ class VideoSamplerDataset(Dataset):
     def __init__(self, video_name):
         pass
 
-
     def __len__(self):
         pass
 

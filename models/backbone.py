@@ -19,13 +19,14 @@ class ImageEncoder(nn.Module):
         return self.embedding(self.backbone(x))
 
 
+@torch.no_grad()
 def encode_box(pred, box_max_size=64):
-    ret = torch.zeros((len(pred), box_max_size * 5))
+    ret = torch.zeros((len(pred), box_max_size * 5))  # [batch_dim, bbox_dim]
     for i, det in enumerate(pred):
         det: torch.Tensor
         if len(det) == 0:
             continue
-        det = det[:, :5]
+        det = det[:, :5]  # [x, y, h, w, conf]
         view = det.reshape(-1)
         ret[i, 0:view.shape[0]] = view
     return ret
