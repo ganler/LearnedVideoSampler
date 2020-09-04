@@ -4,7 +4,7 @@ import sys
 project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
-from models.backbone import SamplerBackbone, encode_box
+from models.backbone import SamplerBackbone, boxlist2tensor
 import cv2
 
 rate_option = [1, 2, 4, 8, 12, 16, 32, 64, 128]
@@ -53,7 +53,7 @@ for video in videos_to_process:
         c += 1
 
         if c % 3 == 0:
-            box_embedding = encode_box(stack).unsqueeze(0).cuda()
+            box_embedding = boxlist2tensor(stack).unsqueeze(0).cuda()
             model(inp, box_embedding)
             stack = []
 

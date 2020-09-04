@@ -4,7 +4,7 @@ import sys
 project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
-from models.backbone import SamplerBackbone, encode_box
+from models.backbone import SamplerBackbone, boxlist2tensor
 from application.carcounter import CarCounter
 from tqdm import tqdm
 
@@ -55,7 +55,7 @@ for video in tqdm(videos_to_process):
         data_dict["count"][c] = car_count
         stack.pop(0)
         stack.append(pred[0])
-        data_dict['bbox'][c] = encode_box(stack).numpy()
+        data_dict['bbox'][c] = boxlist2tensor(stack).numpy()
 
     with open(f'{video}.npy', 'wb') as f:
         np.save(f, data_dict)
