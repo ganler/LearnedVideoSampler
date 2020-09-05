@@ -21,6 +21,8 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=1) ->
     ret = np.zeros((len(boxlists), 1, tensor_resolution[0] // factor, tensor_resolution[1] // factor), dtype=np.float32)
 
     for tensor, boxlist in zip(ret, boxlists):
+        if 0 == boxlist.nelement():
+            continue
         boxlist = boxlist[:, :5].cpu().numpy()
         for (*xyxy, conf) in boxlist:
             intxyxy = [int(element / factor) for element in xyxy]

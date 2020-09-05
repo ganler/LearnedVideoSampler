@@ -491,7 +491,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, multi_label=T
     t = time.time()
     nc = prediction[0].shape[1] - 5  # number of classes
     multi_label &= nc > 1  # multiple labels per box
-    output = [[]] * prediction.shape[0]
+    output = [torch.Tensor()] * prediction.shape[0]
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         x = x[x[:, 4] > conf_thres]  # confidence
