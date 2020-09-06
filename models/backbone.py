@@ -15,10 +15,12 @@ Input signal can be
 
 
 @torch.no_grad()
-def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=1) -> torch.Tensor:
+def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) -> torch.Tensor:
     # Input : List[[BoxIndex, X, Y, W, H, CONF]]
     # Output: [SequenceIndex, 1, TensorHeight, TensorWidth]
-    ret = np.zeros((len(boxlists), 1, tensor_resolution[1] // factor, tensor_resolution[0] // factor), dtype=np.float32)
+    ret = np.zeros(
+        (len(boxlists), 1, tensor_resolution[1] // factor, tensor_resolution[0] // factor),
+        dtype=np.float32)
 
     for tensor, boxlist in zip(ret, boxlists):
         if 0 == boxlist.nelement():
@@ -30,26 +32,14 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=1) ->
             tensor[0, x0:x1, y0:y1] += conf
     return torch.from_numpy(ret)
 
-
-def make_bottleneck(input_channel=1):
-    return nn.Sequential(
-        nn.Conv2d(input_channel, input_channel * 4, 5),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(input_channel * 4, input_channel * 8, 3),
-        nn.ReLU(inplace=True)
-    )
-
 class ImageEncoder(nn.Module, ABC):
-    def __init__(self, n_out=64):
+    def __init__(self, n_out=64, frozen=True):
         super(ImageEncoder, self).__init__()
-        self.backbone = resnet18(pretrained=False)
+        self.backbone = resnet18(pretrained=True)
 
-        # self.diynet = nn.Sequential(
-        #     make_bottleneck(3),
-        #     nn.MaxPool2d(3),
-        #     make_bottleneck(3 * 8)
-        # )
-        # self.diyembedding = nn.Linear(192, n_out)
+        if frozen:
+            self.backbone.requires_grad_(False)
+            self.backbone.eval()
 
         self.embedding = nn.Linear(1000, n_out)
 
@@ -61,9 +51,13 @@ class BBoxListEncoder(nn.Module, ABC):
     def __init__(self, n_hidden=256, n_out=64):
         super(BBoxListEncoder, self).__init__()
 
-        self.bottleneck0 = make_bottleneck(1)
-        self.bottleneck1 = make_bottleneck(8)  # 8 x 8
-        self.rnn = nn.LSTM(64, n_hidden, bidirectional=True, batch_first=True)
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(1, 4, 5),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(4, 8, 3),
+            nn.LeakyReLU(inplace=True)
+        )
+        self.rnn = nn.LSTM(8, n_hidden, bidirectional=True, batch_first=True)
         self.embedding = nn.Linear(n_hidden * 2, n_out)
 
     def forward(self, x: torch.Tensor):
@@ -73,8 +67,7 @@ class BBoxListEncoder(nn.Module, ABC):
         if has_batch:
             N, S, C, H, W = x.shape
             x = x.view(-1, C, H, W)
-        x = self.bottleneck0(x)
-        x = self.bottleneck1(x)
+        x = self.bottleneck(x)
         # [BatchDim, SequenceDim, 64, ?, ?]
         x = F.adaptive_avg_pool2d(x, (1, 1)).flatten(1)
         if has_batch:
@@ -91,18 +84,11 @@ class SamplerBackbone(torch.nn.Module, ABC):
         super(SamplerBackbone, self).__init__()
         self.image_encoder = ImageEncoder(n_embed)
         self.box_encoder = BBoxListEncoder(n_hidden=n_hidden, n_out=n_embed)
-
-        self.img_mul = nn.Linear(n_embed, n_embed)
-        self.box_mul = nn.Linear(n_embed, n_embed)
-
-        self.post = nn.Sequential(
-            nn.LeakyReLU(),
-            nn.Linear(n_embed, n_option)
-        )
+        self.post = nn.Linear(n_embed, n_option)
 
     def forward(self, im, boxes):
-        left = self.img_mul(self.image_encoder(im))
-        right = self.box_mul(self.box_encoder(boxes))
+        left = self.image_encoder(im)
+        right = self.box_encoder(boxes)
 
         x = left + right
         x = self.post(x)

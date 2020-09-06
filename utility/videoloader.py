@@ -37,15 +37,13 @@ class VideoSamplerDataset:
     def __next__(self):
         this_index = None
         if self.cross_video:  # e.g., video 0 -> video 1 -> ... round robin.
-            try_n = 0
-            this_index = self.cur_ptr
-            while try_n < len(self.data_list) and self.ptr[this_index] >= len(self.data_list[this_index]['car_count']):
-                try_n += 1
-                this_index = (this_index + 1) % len(self.data_list)  # Next round.
-            if try_n == len(self.data_list):
+            candidates = []
+            for i in range(len(self.ptr)):
+                if self.ptr[i] < len(self.data_list[i]['car_count']):
+                    candidates.append(i)
+            if len(candidates) == 0:
                 raise StopIteration('Data exhausted...')
-            # this_index is OK now.
-            self.cur_ptr = (this_index + 1) % len(self.data_list)
+            this_index = candidates[random.randint(0, len(candidates) - 1)]
         else:  # e.g., read all of video 0, then video 1, ... till video[final]
             if self.ptr[self.cur_ptr] >= len(self.data_list[self.cur_ptr]['car_count']):  # Current clip exhausted.
                 self.cur_ptr += 1  # Next One.
@@ -82,14 +80,13 @@ class VideoSamplerDataset:
         max_item_size = len(car_counts)
 
         ret = [1]
-        for label in car_counts[min(self.last_frame_ptr+1, max_item_size):min(self.last_frame_ptr+1+n, max_item_size)]:
+        for label in car_counts[
+                     min(self.last_frame_ptr + 1, max_item_size):min(self.last_frame_ptr + 1 + n, max_item_size)]:
             min_val = min(predicted_val, label)
             max_val = max(predicted_val, label)
             ret.append(min_val / max_val if max_val != 0 else 1.)
 
         return ret
-
-
 
     def next(self):
         return self.__next__()
