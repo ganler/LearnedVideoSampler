@@ -8,10 +8,13 @@ from .yolov3.models import *
 from .yolov3.utils.datasets import *
 from .yolov3.utils.utils import *
 
+
 def get_device():
     return torch.device('cuda')
 
+
 cur_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), 'yolov3')
+
 
 @dataclass
 class YOLOConfig:
@@ -20,6 +23,19 @@ class YOLOConfig:
     conf_thres: float = 0.3
     iou_thres: float = 0.3
     resolution: Tuple[int, int] = (608, 352)
+
+
+@torch.no_grad()
+def preprocess_image(im, resolution):
+    im = cv2.resize(im, resolution)
+    inp = im[:, :, ::-1].transpose(2, 0, 1)
+    inp = np.ascontiguousarray(inp, dtype=np.float32)
+    inp = torch.from_numpy(inp).to(get_device()).float() / 255.
+
+    if inp.ndimension() == 3:
+        inp = inp.unsqueeze(0)
+
+    return inp
 
 
 class CarCounter:
@@ -45,19 +61,8 @@ class CarCounter:
         else:
             raise Exception('Unknown config type! Maybe you can use `YOLO`')
 
-
-    @torch.no_grad()
     def process_image(self, im):
-        im = cv2.resize(im, self.config.resolution)
-        inp = im[:, :, ::-1].transpose(2, 0, 1)
-        inp = np.ascontiguousarray(inp, dtype=np.float32)
-        inp = torch.from_numpy(inp).to(get_device()).float() / 255.
-
-        if inp.ndimension() == 3:
-            inp = inp.unsqueeze(0)
-
-        return inp
-
+        return preprocess_image(im, self.config.resolution)
 
     @torch.no_grad()
     def predict(self, inp):
@@ -69,7 +74,6 @@ class CarCounter:
         # for p in pred:
         #     print(f'Time elapsed: {1000 * (torch_utils.time_synchronized() - t1)} ms. Detected cars :=> {len(p)}')
         return pred
-
 
     def viz(self, pred: torch.Tensor, img):
         img = cv2.resize(img, self.config.resolution)
@@ -86,6 +90,3 @@ class CarCounter:
         cv2.imshow('viz', img)
         if cv2.waitKey(1) == ord('q'):  # q to quit
             raise StopIteration
-
-
-

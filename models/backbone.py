@@ -18,7 +18,7 @@ Input signal can be
 def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=1) -> torch.Tensor:
     # Input : List[[BoxIndex, X, Y, W, H, CONF]]
     # Output: [SequenceIndex, 1, TensorHeight, TensorWidth]
-    ret = np.zeros((len(boxlists), 1, tensor_resolution[0] // factor, tensor_resolution[1] // factor), dtype=np.float32)
+    ret = np.zeros((len(boxlists), 1, tensor_resolution[1] // factor, tensor_resolution[0] // factor), dtype=np.float32)
 
     for tensor, boxlist in zip(ret, boxlists):
         if 0 == boxlist.nelement():
@@ -28,7 +28,7 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=1) ->
             intxyxy = [int(element / factor) for element in xyxy]
             (x0, y0, x1, y1) = intxyxy
             tensor[0, x0:x1, y0:y1] += conf
-    return torch.from_numpy(ret).float()
+    return torch.from_numpy(ret)
 
 
 def make_bottleneck(input_channel=1):
