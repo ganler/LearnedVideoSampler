@@ -22,7 +22,7 @@ class YOLOConfig:
     weights: str = 'yolov3-spp-ultralytics.pt'
     conf_thres: float = 0.3
     iou_thres: float = 0.3
-    resolution: Tuple[int, int] = (608, 352)
+    resolution: Tuple[int, int] = (608, 352)  # (w, h)
 
 
 @torch.no_grad()

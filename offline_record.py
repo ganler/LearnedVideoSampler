@@ -41,9 +41,6 @@ if __name__ == '__main__':
         clip_image_num = AIM_CLIP_FPS * AIM_CLIP_FRAMES
         clip_num = frames // clip_image_num
 
-        last_sample_start = 0
-        last_result = 0
-
         for clip_id in tqdm(range(clip_num)):
             output_prefix = f'{video.replace(VIDEO_FORMAT, SPLITTER)}{clip_id}'
             output_video = output_prefix + CLIP_FORMAT
@@ -62,6 +59,9 @@ if __name__ == '__main__':
             }
 
             max_skip = 0
+            last_sample_start = 0
+            last_result = -1
+
             for frame_id in range(clip_image_num):
                 ret, frame = cap.read()
                 if not ret:

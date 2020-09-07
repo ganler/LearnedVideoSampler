@@ -6,6 +6,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 from datetime import datetime
+import random
 
 project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
@@ -16,11 +17,11 @@ from utility.videoloader import create_train_test_datasets
 
 config = YOLOConfig()
 EPOCH = 3
-BATCH_SIZE = 30
+BATCH_SIZE = 64
 FACTOR = 4
-RATE_OPTIONS = np.arange(2)
+RATE_OPTIONS = np.arange(16)
 VIDEO_FOLDER = os.path.join(project_dir, 'data')
-LOSS_RECORD_DUR = 900 * 4
+LOSS_RECORD_DUR = 8000
 VIDEO_SUFFIX = '.avi'
 PRETRAINED_PATH = None
 
@@ -47,6 +48,23 @@ if __name__ == '__main__':
         'accuracy': []
     }
     print(f'Training Samples: {len(train_data)}, Test Samples: {len(test_data)}')
+
+    print('Evaluation random skipping algorithm ...')
+    test_data.reset()
+    random_skip_accum = 0
+    random_numerator = 0
+    random_denominator = 1e-7
+    for (image, boxlists), (car_cnt, max_skip) in test_data:
+        predicted = RATE_OPTIONS[random.randint(0, len(RATE_OPTIONS)-1)]
+        res, _ = test_data.skip_and_evaluate(predicted)
+        random_skip_accum += predicted
+        random_numerator += sum(res)
+        random_denominator += len(res)
+    random_avg_accuracy = random_numerator / random_denominator
+    print(
+        f'Random skipping: skipped: {random_skip_accum} / {len(test_data)} | accuracy: {random_avg_accuracy*100:.3f} %')
+
+
     for ep in range(EPOCH):
         train_data.reset()
         running_loss = 0.0
@@ -58,11 +76,14 @@ if __name__ == '__main__':
             bbox_batch[i % BATCH_SIZE] = boxlist2tensor(
                 boxlists, tensor_resolution=config.resolution, factor=FACTOR).cuda()
             image_batch[i % BATCH_SIZE] = preprocess_image(image, config.resolution).cuda()
-            image_batch[i % BATCH_SIZE] = max(max_skip, len(RATE_OPTIONS) - 1)
+            label_batch[i % BATCH_SIZE] = min(max_skip, RATE_OPTIONS[-1])
 
-            if i % BATCH_SIZE == BATCH_SIZE - 1:
+            if (i + 1) % BATCH_SIZE == 0 or i == len(train_data) - 1:
+                if i == len(train_data) and (i + 1) % BATCH_SIZE != 0:
+                    image_batch = image_batch[:((i+1) % BATCH_SIZE)]
+                    bbox_batch = bbox_batch[:((i+1) % BATCH_SIZE)]
                 out = model(image_batch, bbox_batch)
-                loss = loss_func(out, label_batch) * (label_batch + 1).float().mean()
+                loss = loss_func(out, label_batch)
                 loss.backward()
                 optimizer.step()
                 running_loss += loss.item()
@@ -83,7 +104,7 @@ if __name__ == '__main__':
                         out = model(imtensor, boxtensor)
                         _, predicted = torch.max(out.data, 1)
                         predicted = RATE_OPTIONS[predicted.cpu().numpy()[0]]
-                        res = test_data.skip_and_evaluate(predicted)
+                        res, _ = test_data.skip_and_evaluate(predicted)
                         skip_accum += predicted
                         numerator += sum(res)
                         denominator += len(res)

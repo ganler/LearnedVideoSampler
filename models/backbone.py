@@ -33,7 +33,7 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) ->
     return torch.from_numpy(ret)
 
 class ImageEncoder(nn.Module, ABC):
-    def __init__(self, n_out=64, frozen=True):
+    def __init__(self, n_out=64, frozen=False):
         super(ImageEncoder, self).__init__()
         self.backbone = resnet18(pretrained=True)
 
@@ -48,17 +48,21 @@ class ImageEncoder(nn.Module, ABC):
 
 
 class BBoxListEncoder(nn.Module, ABC):
-    def __init__(self, n_hidden=256, n_out=64):
+    def __init__(self, n_hidden=64, n_out=64):
         super(BBoxListEncoder, self).__init__()
 
         self.bottleneck = nn.Sequential(
             nn.Conv2d(1, 4, 5),
             nn.LeakyReLU(inplace=True),
+            nn.Conv2d(4, 4, 5),
+            nn.LeakyReLU(inplace=True),
             nn.Conv2d(4, 8, 3),
             nn.LeakyReLU(inplace=True)
         )
         self.rnn = nn.LSTM(8, n_hidden, bidirectional=True, batch_first=True)
-        self.embedding = nn.Linear(n_hidden * 2, n_out)
+        self.embedding = nn.Sequential(
+            nn.Linear(n_hidden * 2, n_out)
+        )
 
     def forward(self, x: torch.Tensor):
         # [BatchDim, SequenceDim, 1, W, H]
