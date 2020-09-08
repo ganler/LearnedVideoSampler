@@ -133,7 +133,7 @@ if __name__ == '__main__':
                 info += f'skipped / all: {acc_skipped} / {acc_frames}, avg. accuracy: {avg_accu_this_episode:.3f} %'
                 print(info)
                 records['reward'].append(acc_reward)
-                if (episode_index + 1) % LOSS_RECORD_DUR or (episode_index + 1) == len(train_data.ptr):
+                if (episode_index + 1) % LOSS_RECORD_DUR == 0 or (episode_index + 1) == len(train_data.ptr):
                     target_net.load_state_dict(policy_net.state_dict())
                     print('.... Start periodic evaluation.')
                     test_data.reset()
@@ -178,7 +178,7 @@ if __name__ == '__main__':
 
                 state_action_values = policy_net(state_image_batch, state_boxlist_batch).gather(1, action_batch)
 
-                next_state_values = target_net(next_state_image_batch, next_state_boxlist_batch).max(1)[0]
+                next_state_values = target_net(next_state_image_batch, next_state_boxlist_batch).max(1)[0].detach()
 
                 # print(next_state_values.shape, reward_batch.shape)
 
