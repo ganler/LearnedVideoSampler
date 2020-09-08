@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from datetime import datetime
 from utility.rlhelpers import *
+import math
+import random
 
 project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
@@ -33,7 +35,8 @@ SKIP_COST = 1
 INFER_COST = 3
 SLA_PENALTY = -10000
 SKIP_REWARD_FACTOR = 1
-
+EPS_START = 0.9
+EPS_END = 0.05
 
 # def sampler_loss_function(pred: torch.Tensor, label: torch.Tensor):
 #     # Batched impl.
@@ -116,10 +119,15 @@ if __name__ == '__main__':
             # State = (image, encoded_boxlists)
             # def select_action():
             # TODO: \epsilon-greedy exploration
-            with torch.no_grad():
-                next_skip = policy_net(*current_state).max(1)[1].view(1, 1)
-            # * ACTION
-            action = next_skip.cpu().long().numpy()[0][0]
+            eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode_index / len(train_data.ptr))
+
+            if random.random() > eps_threshold:
+                with torch.no_grad():
+                    _, next_skip = torch.max(policy_net(*current_state).data, 1)
+                    action = next_skip.cpu().long().numpy()[0]
+            else:
+                action = random.sample(RATE_OPTIONS.tolist(), 1)[0]
+
             accuracy_list, done = train_data.skip_and_evaluate(action)
 
             # * Update records
