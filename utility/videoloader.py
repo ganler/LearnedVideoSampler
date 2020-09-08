@@ -20,6 +20,7 @@ class VideoSamplerDataset:
         for _, npy_path in self.data_pairs:
             full_data: Dict = np.load(npy_path, allow_pickle=True).item()
             discount_index = int(len(full_data['car_count']) * discount)
+            full_data['max_skip'] -= 1
             for k in full_data:
                 full_data[k] = full_data[k][:discount_index]
             self.data_list.append(full_data)
@@ -69,7 +70,7 @@ class VideoSamplerDataset:
         return self
 
     def skip_and_evaluate(self, n):
-        last_frame_ptr = self.ptr[self.last_ptr]
+        last_frame_ptr = self.ptr[self.last_ptr] - 1
         self.ptr[self.last_ptr] += n
         is_over = False
 

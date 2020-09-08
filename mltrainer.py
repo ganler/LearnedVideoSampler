@@ -39,7 +39,7 @@ PRETRAINED_PATH = None
 if __name__ == '__main__':
     model = SamplerBackbone(len(RATE_OPTIONS)).cuda()
     loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adamax(model.parameters(), 1e-3)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3, momentum=0.2)
 
     train_data, test_data = create_train_test_datasets(folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, train_proportion=0.8)
     records = {
