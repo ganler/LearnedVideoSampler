@@ -28,10 +28,11 @@ VIDEO_SUFFIX = '.avi'
 PRETRAINED_PATH = None
 TARGET_UPDATE = 10
 ACCURACY_SLA = 0.95
-REPLAY_BUFFER = ReplayMemory(BATCH_SIZE * 500)
+REPLAY_BUFFER = ReplayMemory(BATCH_SIZE * 50)
 SKIP_COST = 1
 INFER_COST = 3
-SLA_PENALTY = -1000
+SLA_PENALTY = -10000
+SKIP_REWARD_FACTOR = 1
 
 
 # def sampler_loss_function(pred: torch.Tensor, label: torch.Tensor):
@@ -45,8 +46,11 @@ SLA_PENALTY = -1000
 #     for single_label in label:
 #         mask = []
 
-def reward_function(avg_accumulative_accuracy, frames_skipped):
-    return (avg_accumulative_accuracy < ACCURACY_SLA) * SLA_PENALTY + (frames_skipped - 1) * INFER_COST - SKIP_COST
+def reward_function(avg_accumulative_accuracy, frames_skipped, best_skip):
+    return max(ACCURACY_SLA - avg_accumulative_accuracy, 0) * SLA_PENALTY \
+           + (frames_skipped - 1) * INFER_COST \
+           + (best_skip - frames_skipped) * SKIP_REWARD_FACTOR \
+           - SKIP_COST
 
 
 if __name__ == '__main__':
@@ -56,7 +60,7 @@ if __name__ == '__main__':
     target_net.requires_grad_(False)
     target_net.eval()
 
-    optimizer = torch.optim.RMSprop(policy_net.parameters())
+    optimizer = torch.optim.RMSprop(policy_net.parameters(), lr=0.05)
 
     train_data, test_data = create_train_test_datasets(
         folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, episode_mode=True, train_proportion=0.8)
@@ -81,6 +85,7 @@ if __name__ == '__main__':
 
         episode_index = 0
 
+
         def reset_states():
             global current_state, next_state, \
                 acc_numerator, acc_denominator, \
@@ -94,6 +99,7 @@ if __name__ == '__main__':
             acc_frames = 0
             episode_index += 1
             acc_reward = 0
+
 
         for i, ((image, boxlists), (car_cnt, max_skip)) in tqdm(enumerate(train_data),
                                                                 desc=f'#{epoch + 1} Training Epoch'):
@@ -122,20 +128,21 @@ if __name__ == '__main__':
             acc_skipped += action
             acc_frames += (action + 1)
             # * REWARD
-            reward = reward_function(acc_numerator / acc_denominator, action)
+            reward = reward_function(acc_numerator / acc_denominator, action, max_skip)
             acc_reward *= GAMMA
             acc_reward += reward
             REPLAY_BUFFER.push(current_state, action, next_state, reward)
 
             if done:
-                avg_accu_this_episode = (acc_numerator / acc_denominator)*100
-                info = f'\nIn #{episode_index + 1} episode, accum. reward: {acc_reward:.3f}, '
+                avg_accu_this_episode = (acc_numerator / acc_denominator) * 100
+                info = f'\n>> In #{episode_index + 1} episode, accum. reward: {acc_reward:.3f}, '
                 info += f'skipped / all: {acc_skipped} / {acc_frames}, avg. accuracy: {avg_accu_this_episode:.3f} %'
                 print(info)
+                print(f'>> ReplayBuffer size := {len(REPLAY_BUFFER)} / {REPLAY_BUFFER.capacity}')
                 records['reward'].append(acc_reward)
                 if (episode_index + 1) % LOSS_RECORD_DUR == 0 or (episode_index + 1) == len(train_data.ptr):
                     target_net.load_state_dict(policy_net.state_dict())
-                    print('.... Start periodic evaluation.')
+                    print('>> .... Start periodic evaluation.')
                     test_data.reset()
                     with torch.no_grad():
                         target_net.eval()
@@ -156,7 +163,7 @@ if __name__ == '__main__':
                     records['accuracy'].append(avg_accuracy)
                     records['skipped_frames'].append(skip_accum)
                     print(
-                        f'EVAL => acc.: {avg_accuracy * 100:.3f}% | skipped_frames: {skip_accum} / {len(test_data)}')
+                        f'>> EVAL => acc.: {avg_accuracy * 100:.3f}% | skipped_frames: {skip_accum} / {len(test_data)}')
                 reset_states()
             else:
                 current_state = next_state

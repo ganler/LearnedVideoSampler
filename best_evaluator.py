@@ -20,7 +20,7 @@ PRETRAINED_PATH = None
 
 if __name__ == '__main__':
     train_data, test_data = create_train_test_datasets(
-        folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, train_proportion=0.95)
+        folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, train_proportion=0.8)
     print(f'Test Samples Number: {len(test_data)}')
     print('Evaluation best skipping algorithm ...')
     test_data.reset()

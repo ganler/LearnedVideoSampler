@@ -72,14 +72,10 @@ class VideoSamplerDataset:
     def skip_and_evaluate(self, n):
         last_frame_ptr = self.ptr[self.last_ptr] - 1
         self.ptr[self.last_ptr] += n
-        is_over = False
-
-        if n != 0:
-            if self.ptr[self.last_ptr] >= len(self.data_list[self.last_ptr]['car_count']):
-                is_over = True
-            else:
-                self.cap_list[self.last_ptr].set(
-                    cv2.CAP_PROP_POS_FRAMES, self.ptr[self.last_ptr])
+        is_over = self.ptr[self.last_ptr] >= len(self.data_list[self.last_ptr]['car_count'])
+        if not is_over and n != 0:
+            self.cap_list[self.last_ptr].set(
+                cv2.CAP_PROP_POS_FRAMES, self.ptr[self.last_ptr])
 
         car_counts = self.data_list[self.last_ptr]['car_count']
         predicted_val = car_counts[last_frame_ptr]
