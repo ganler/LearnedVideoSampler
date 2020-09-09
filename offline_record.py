@@ -14,7 +14,7 @@ config = CarCounter.YOLOConfig()
 # config.resolution = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) // fw, int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) // fh)
 data_path = os.path.join(project_dir, 'data')
 
-IMSHOW = False
+IMSHOW = True
 VIDEO_FORMAT = '.mp4'
 CLIP_FORMAT = '.avi'
 SPLITTER = '___'
@@ -26,9 +26,10 @@ assert CLIP_FORMAT != VIDEO_FORMAT
 if __name__ == '__main__':
     counter = CarCounter.CarCounter(config)
 
-    processed_videos = [x.split(SPLITTER)[0] for x in os.listdir(data_path) if x.endswith(CLIP_FORMAT)]
-    videos_to_process = [os.path.join(data_path, x) for x in os.listdir(data_path) if
-                         x.endswith(VIDEO_FORMAT) and x not in processed_videos]
+    # processed_videos = [x.split(SPLITTER)[0] for x in os.listdir(data_path) if x.endswith(CLIP_FORMAT)]
+    # videos_to_process = [os.path.join(data_path, x) for x in os.listdir(data_path) if
+    #                      x.endswith(VIDEO_FORMAT) and x.split('.')[0] not in processed_videos]
+    videos_to_process = ['data/video-clip-5min.mp4']
 
     for i, video in enumerate(videos_to_process):
         print(f'Video to be processed: #{i} ==> {video}')

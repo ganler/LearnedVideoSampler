@@ -6,6 +6,7 @@ from torch import nn
 from torchvision.models import mobilenet_v2, resnet18, vgg11, mnasnet1_3
 from typing import List
 import torch.nn.functional as F
+import cv2
 
 '''
 Input signal can be
@@ -29,11 +30,13 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) ->
         for (*xyxy, conf) in boxlist:
             intxyxy = [int(element / factor) for element in xyxy]
             (x0, y0, x1, y1) = intxyxy
-            tensor[0, x0:x1, y0:y1] += conf
+            tensor[0, y0:y1, x0:x1] += conf
+        # print(tensor.shape)
+        # cv2.imshow('', tensor[0])
     return torch.from_numpy(ret)
 
 class ImageEncoder(nn.Module, ABC):
-    def __init__(self, n_out=64, frozen=False):
+    def __init__(self, n_out=64, frozen=True):
         super(ImageEncoder, self).__init__()
         self.backbone = resnet18(pretrained=True)
 

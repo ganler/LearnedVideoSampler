@@ -25,18 +25,19 @@ FACTOR = 4
 RATE_OPTIONS = np.arange(16)
 VIDEO_FOLDER = os.path.join(project_dir, 'data')
 LOSS_RECORD_DUR = 10
-GAMMA = 0.99
+GAMMA = 0.9
 VIDEO_SUFFIX = '.avi'
 PRETRAINED_PATH = None
 TARGET_UPDATE = 10
-ACCURACY_SLA = 0.95
+ACCURACY_SLA = 0.98
 REPLAY_BUFFER = ReplayMemory(BATCH_SIZE * 50)
 SKIP_COST = 1
 INFER_COST = 3
 SLA_PENALTY = -10000
 SKIP_REWARD_FACTOR = 1
-EPS_START = 0.9
+EPS_START = 0.6
 EPS_END = 0.05
+
 
 # def sampler_loss_function(pred: torch.Tensor, label: torch.Tensor):
 #     # Batched impl.
@@ -52,7 +53,7 @@ EPS_END = 0.05
 def reward_function(avg_accumulative_accuracy, frames_skipped, best_skip):
     return max(ACCURACY_SLA - avg_accumulative_accuracy, 0) * SLA_PENALTY \
            + (frames_skipped - 1) * INFER_COST \
-           + (best_skip - frames_skipped) * SKIP_REWARD_FACTOR \
+           + abs(best_skip - frames_skipped) * SKIP_REWARD_FACTOR \
            - SKIP_COST
 
 
@@ -63,7 +64,7 @@ if __name__ == '__main__':
     target_net.requires_grad_(False)
     target_net.eval()
 
-    optimizer = torch.optim.RMSprop(policy_net.parameters(), lr=0.05)
+    optimizer = torch.optim.RMSprop(policy_net.parameters(), lr=0.01, weight_decay=0.1)
 
     train_data, test_data = create_train_test_datasets(
         folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, episode_mode=True, train_proportion=0.8)
