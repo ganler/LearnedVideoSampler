@@ -60,6 +60,10 @@ class VideoSamplerDataset:
         self.ptr[this_index] += 1
 
         ret, frame = self.cap_list[this_index].read()
+
+        if not ret:
+            print(f'Got bad videos... {self.data_pairs[this_index][0]}')
+
         car_count = self.data_list[this_index]['car_count'][this_frame_index]
         max_skip = self.data_list[this_index]['max_skip'][this_frame_index]
         real_boxes = self.data_list[this_index]['boxlists'][max(0, this_frame_index - self.n_box):this_frame_index]

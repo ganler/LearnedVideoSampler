@@ -14,7 +14,7 @@ config = CarCounter.YOLOConfig()
 # config.resolution = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) // fw, int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) // fh)
 data_path = os.path.join(project_dir, 'data')
 
-IMSHOW = True
+IMSHOW = False
 VIDEO_FORMAT = '.mp4'
 CLIP_FORMAT = '.avi'
 SPLITTER = '___'

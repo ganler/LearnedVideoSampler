@@ -3,19 +3,18 @@ import sys
 
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from datetime import datetime
-from utility.rlhelpers import *
 import math
-import random
+import time
 
-project_dir = os.path.abspath(os.path.dirname(__file__))
+project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
+from utility.rlhelpers import *
 from application.carcounter.CarCounter import YOLOConfig, preprocess_image
-from models.backbone import SamplerBackbone, boxlist2tensor
+from models.experimental import ImagePolicyNet
 from utility.videoloader import create_train_test_datasets
 
 config = YOLOConfig()
@@ -60,13 +59,13 @@ def reward_function(avg_accumulative_accuracy, this_acc, frames_skipped, best_sk
 
 
 if __name__ == '__main__':
-    policy_net = SamplerBackbone(len(RATE_OPTIONS)).cuda()
-    target_net = SamplerBackbone(len(RATE_OPTIONS)).cuda()
+    policy_net = ImagePolicyNet(len(RATE_OPTIONS)).cuda()
+    target_net = ImagePolicyNet(len(RATE_OPTIONS)).cuda()
     target_net.load_state_dict(policy_net.state_dict())
     target_net.requires_grad_(False)
     target_net.eval()
 
-    optimizer = torch.optim.RMSprop(policy_net.parameters(), lr=0.01, weight_decay=0.1)
+    optimizer = torch.optim.RMSprop(policy_net.parameters(), weight_decay=0.1)
 
     train_data, test_data = create_train_test_datasets(
         folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, episode_mode=True, train_proportion=0.8)
@@ -110,14 +109,12 @@ if __name__ == '__main__':
         for i, ((image, boxlists), (car_cnt, max_skip)) in tqdm(enumerate(train_data),
                                                                 desc=f'#{epoch + 1} Training Epoch'):
             image = preprocess_image(image, config.resolution).cuda()
-            encoded_boxlists = boxlist2tensor(
-                boxlists, tensor_resolution=config.resolution, factor=FACTOR).cuda()
             # label = min(max_skip, RATE_OPTIONS.max())
             if current_state is None:
-                current_state = (image, encoded_boxlists)
+                current_state = image
                 continue
             else:
-                next_state = (image, encoded_boxlists)
+                next_state = image
 
             # State = (image, encoded_boxlists)
             # def select_action():
@@ -126,7 +123,7 @@ if __name__ == '__main__':
 
             if random.random() > eps_threshold:
                 with torch.no_grad():
-                    _, next_skip = torch.max(policy_net(*current_state).data, 1)
+                    _, next_skip = torch.max(policy_net(current_state).data, 1)
                     action = next_skip.cpu().long().numpy()[0]
             else:
                 action = random.sample(RATE_OPTIONS.tolist(), 1)[0]
@@ -163,9 +160,8 @@ if __name__ == '__main__':
                         numerator = 0
                         denominator = 1e-7
                         for (image, boxlists), (car_cnt, max_skip) in test_data:
-                            boxtensor = boxlist2tensor(boxlists, tensor_resolution=config.resolution).cuda()
                             imtensor = preprocess_image(image, config.resolution).cuda()
-                            out = target_net(imtensor, boxtensor)
+                            out = target_net(imtensor)
                             _, predicted = torch.max(out.data, 1)
                             predicted = RATE_OPTIONS[predicted.cpu().numpy()[0]]
                             res, _ = test_data.skip_and_evaluate(predicted)
@@ -187,18 +183,15 @@ if __name__ == '__main__':
                 batch = Transition(*zip(*transitions))
 
                 # state_batch_image =
-                state_image_batch = torch.cat([t[0] for t in batch.state])
-                state_boxlist_batch = torch.cat([t[1] for t in batch.state])
-
-                next_state_image_batch = torch.cat([t[0] for t in batch.next_state])
-                next_state_boxlist_batch = torch.cat([t[1] for t in batch.next_state])
+                state_image_batch = torch.cat(batch.state)
+                next_state_image_batch = torch.cat(batch.next_state)
 
                 action_batch = torch.from_numpy(np.array(batch.action, dtype=np.long)).unsqueeze(1).long().cuda()
                 reward_batch = torch.from_numpy(np.array(batch.reward, dtype=np.long)).cuda()
 
-                state_action_values = policy_net(state_image_batch, state_boxlist_batch).gather(1, action_batch)
+                state_action_values = policy_net(state_image_batch).gather(1, action_batch)
 
-                next_state_values = target_net(next_state_image_batch, next_state_boxlist_batch).max(1)[0].detach()
+                next_state_values = target_net(next_state_image_batch).max(1)[0].detach()
 
                 # print(next_state_values.shape, reward_batch.shape)
 
@@ -215,7 +208,7 @@ if __name__ == '__main__':
                 loss.backward()
                 optimizer.step()
 
-    record_sign = f'RL-{datetime.now().isoformat().split(".")[0]}-epoch-{EPOCH}-clip-{len(train_data)}'
+    record_sign = f'RL-image-{datetime.now().isoformat().split(".")[0]}-epoch-{EPOCH}-clip-{len(train_data)}'
     np.save(f'{VIDEO_FOLDER}/{record_sign}.npy', records)
     torch.save(
         target_net.state_dict(),
