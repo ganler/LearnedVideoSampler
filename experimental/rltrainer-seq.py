@@ -1,20 +1,17 @@
-import os
-import sys
-
-import numpy as np
-import torch
-import torch.nn.functional as F
-from tqdm import tqdm
-from datetime import datetime
 import argparse
 import math
-import time
+import os
+import sys
+from datetime import datetime
+
+import torch
+import torch.nn.functional as F
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
 from utility.rlhelpers import *
-from application.carcounter.CarCounter import YOLOConfig, preprocess_image
+from application.carcounter.CarCounter import YOLOConfig
 from models.experimental import SeriesUnlinearPolicyNet
 from utility.videoloader import create_train_test_datasets
 
@@ -23,11 +20,13 @@ config = YOLOConfig()
 parser = argparse.ArgumentParser()
 parser.add_argument('--action_space', type=int, default=16)
 parser.add_argument('--batch_size', type=int, default=256)
+parser.add_argument('--accuracy_sla', type=float, default=0.95)
 cfg = parser.parse_args()
 
 print('Configuration Parameters: ')
 print(cfg)
 
+LOG_DISTRIBUTION = True
 EPOCH = 3
 BATCH_SIZE = cfg.batch_size
 FACTOR = 4
@@ -39,14 +38,15 @@ GAMMA = 0.9
 VIDEO_SUFFIX = '.avi'
 PRETRAINED_PATH = None
 TARGET_UPDATE = 15
-ACCURACY_SLA = 0.95
-REPLAY_BUFFER = ReplayMemory(BATCH_SIZE * 40)
+ACCURACY_SLA = cfg.accuracy_sla
+# REPLAY_BUFFER = ReplayMemory(BATCH_SIZE * 40)
+REPLAY_BUFFER = BalancedReplayMemory(BATCH_SIZE * 20, n_option=len(RATE_OPTIONS))
 SKIP_COST = 0
 INFER_COST = 3
 SLA_PENALTY_LONG = -500
 SLA_PENALTY_SHORT = SLA_PENALTY_LONG * 10
 SKIP_REWARD_FACTOR = 1
-EPS_START = 0.6
+EPS_START = 0.9
 EPS_END = 0.05
 
 
@@ -56,6 +56,7 @@ def reward_function(avg_accumulative_accuracy, this_acc, frames_skipped, best_sk
            + (frames_skipped - 1) * INFER_COST \
            + abs(best_skip - frames_skipped) * SKIP_REWARD_FACTOR \
            - SKIP_COST
+
 
 # Simplified reward function.
 # def reward_function(avg_accumulative_accuracy, this_acc, frames_skipped, best_skip):
@@ -72,7 +73,7 @@ if __name__ == '__main__':
     target_net.requires_grad_(False)
     target_net.eval()
 
-    optimizer = torch.optim.RMSprop(policy_net.parameters(), weight_decay=0.1)
+    optimizer = torch.optim.RMSprop(policy_net.parameters(), lr=1e-4, weight_decay=0.1)
 
     train_data, test_data = create_train_test_datasets(
         folder=VIDEO_FOLDER,
@@ -139,7 +140,7 @@ if __name__ == '__main__':
                     _, next_skip = torch.max(policy_net(current_state).data, 1)
                     action = next_skip.cpu().long().numpy()[0]
             else:
-                action = random.sample(RATE_OPTIONS.tolist(), 1)[0]
+                action = RATE_OPTIONS[np.random.randint(0, len(RATE_OPTIONS))]
 
             accuracy_list, done = train_data.skip_and_evaluate(action)
 
@@ -153,7 +154,7 @@ if __name__ == '__main__':
                 acc_numerator / acc_denominator,
                 sum(accuracy_list) / len(accuracy_list),
                 action,
-                min(max_skip, len(RATE_OPTIONS)))
+                min(max_skip, RATE_OPTIONS[-1]))
             # FIXME: Moving to seperate mode.(origin = use acc_numerator / acc_denominator)
             acc_reward *= GAMMA
             acc_reward += reward
@@ -212,16 +213,23 @@ if __name__ == '__main__':
 
                 prob = policy_net(state_image_batch)
                 state_action_values = prob.gather(1, action_batch)
-
-                # with torch.no_grad():
-                #     _, pred = torch.max(prob.data, 1)
-                #     count = np.zeros(len(RATE_OPTIONS))
-                #     pred = pred.cpu().numpy()
-                #     val, c_ = np.unique(pred, return_counts=True)
-                #     count[val] += c_
-                #     print(count)
-
                 next_state_values = target_net(next_state_image_batch).max(1)[0].detach()
+
+                if done and LOG_DISTRIBUTION:
+                    with torch.no_grad():
+                        count = np.zeros(len(RATE_OPTIONS))
+                        pred = np.array(batch.action)
+                        val, c_ = np.unique(pred, return_counts=True)
+                        count[val] += c_
+                        print('The proportion of actions in training samples')
+                        print(count / count.sum())
+                        _, pred = torch.max(prob.data, 1)
+                        count = np.zeros(len(RATE_OPTIONS))
+                        pred = pred.cpu().numpy()
+                        val, c_ = np.unique(pred, return_counts=True)
+                        count[val] += c_
+                        print('The proportion of predicted actions in the same training samples')
+                        print(count / count.sum())
 
                 # print(next_state_values.shape, reward_batch.shape)
 

@@ -25,7 +25,7 @@ class SeriesLinearPolicyNet(nn.Module, ABC):
         self.fc = nn.Linear(n_inp, n_opt)
 
     def forward(self, series):
-        return self.fc(series.view(series.shape[0], -1))
+        return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
 
 
 class SeriesUnlinearPolicyNet(nn.Module, ABC):
@@ -41,6 +41,6 @@ class SeriesUnlinearPolicyNet(nn.Module, ABC):
 
     def forward(self, x):
         # Input Format: [Batch, Data]
-        return self.fc(x.view(x.shape[0], -1))
+        return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
 
 
