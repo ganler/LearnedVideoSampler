@@ -7,16 +7,18 @@ project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
 from utility.videoloader import create_train_test_datasets
+import argparse
 
-EPOCH = 3
-BATCH_SIZE = 128
-FACTOR = 4
-RATE_OPTIONS = np.arange(16)
+parser = argparse.ArgumentParser()
+parser.add_argument('--action_space', type=int, default=16)
+cfg = parser.parse_args()
+
+print('Configuration Parameters: ')
+print(cfg)
+
+RATE_OPTIONS = np.arange(cfg.action_space)
 VIDEO_FOLDER = os.path.join(project_dir, 'data')
-LOSS_RECORD_DUR = BATCH_SIZE * 32
 VIDEO_SUFFIX = '.avi'
-PRETRAINED_PATH = None
-
 
 if __name__ == '__main__':
     train_data, test_data = create_train_test_datasets(
@@ -28,11 +30,11 @@ if __name__ == '__main__':
     random_numerator = 0
     random_denominator = 1e-7
     for (image, boxlists), (car_cnt, max_skip) in tqdm(test_data):
-        predicted = int(max_skip)
+        predicted = min(int(max_skip), RATE_OPTIONS[-1])
         res, _ = test_data.skip_and_evaluate(predicted)
         skip_accum += predicted
         random_numerator += sum(res)
         random_denominator += len(res)
     avg_accuracy = random_numerator / random_denominator
     print(
-        f'Best skipping: skipped_frames: {skip_accum} / {len(test_data)}, avg_accuracy: {avg_accuracy * 100:.3f} %')
+        f'Best skipping: skipped_frames: {skip_accum} / {len(test_data)} = {skip_accum / len(test_data) * 100:.3f}%, avg_accuracy: {avg_accuracy * 100:.3f} %')

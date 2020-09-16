@@ -40,17 +40,6 @@ EPS_START = 0.6
 EPS_END = 0.05
 
 
-# def sampler_loss_function(pred: torch.Tensor, label: torch.Tensor):
-#     # Batched impl.
-#     assert len(label) == len(pred)
-#     numerator = torch.exp(pred)
-#     denominator = torch.sum(numerator, dim=1)
-#     loss = numerator / denominator
-#
-#     # Discounted loss.
-#     for single_label in label:
-#         mask = []
-
 def reward_function(avg_accumulative_accuracy, this_acc, frames_skipped, best_skip):
     return max(ACCURACY_SLA - avg_accumulative_accuracy, 0) * SLA_PENALTY_LONG * (1 - this_acc) \
            + max(ACCURACY_SLA - this_acc, 0) * SLA_PENALTY_SHORT \
@@ -156,7 +145,10 @@ if __name__ == '__main__':
             acc_frames += (action + 1)
             # * REWARD
             reward = reward_function(
-                acc_numerator / acc_denominator, sum(accuracy_list) / len(accuracy_list), action, max_skip)
+                acc_numerator / acc_denominator,
+                sum(accuracy_list) / len(accuracy_list),
+                action,
+                min(max_skip, len(RATE_OPTIONS)))
             acc_reward *= GAMMA
             acc_reward += reward
 
@@ -252,7 +244,7 @@ if __name__ == '__main__':
                 optimizer.step()
 
     record_sign = f'RL-image-{datetime.now().isoformat().split(".")[0]}-epoch-{EPOCH}-clip-{len(train_data)}'
-    np.save(f'{VIDEO_FOLDER}/{record_sign}.npy', records)
+    np.save(os.path.join(VIDEO_FOLDER, f'{record_sign}.npy'), records)
     torch.save(
         target_net.state_dict(),
-        f'{VIDEO_FOLDER}/{record_sign}.pth')
+        os.path.join(VIDEO_FOLDER, f'{record_sign}.pth'))

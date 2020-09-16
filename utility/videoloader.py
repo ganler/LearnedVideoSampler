@@ -12,11 +12,12 @@ class VideoSamplerDataset:
     ptr = None
     last_ptr = None
 
-    def __init__(self, data_pairs: List[Tuple[str, str]], cross_video=False, n_box=5, discount=0.95):
+    def __init__(self, data_pairs: List[Tuple[str, str]], cross_video=False, use_image=True, n_box=5, discount=0.95):
         self.data_pairs = data_pairs
         self.n_box = n_box
         self.cross_video = cross_video
         self.data_list = []
+        self.use_image = use_image
         for _, npy_path in self.data_pairs:
             full_data: Dict = np.load(npy_path, allow_pickle=True).item()
             discount_index = int(len(full_data['car_count']) * discount)
@@ -59,16 +60,20 @@ class VideoSamplerDataset:
         this_frame_index = self.ptr[this_index]
         self.ptr[this_index] += 1
 
-        ret, frame = self.cap_list[this_index].read()
-
-        if not ret:
-            print(f'Got bad videos... {self.data_pairs[this_index][0]}')
+        if self.use_image:
+            ret, frame = self.cap_list[this_index].read()
+            if not ret:
+                print(f'Got bad videos... {self.data_pairs[this_index][0]}')
 
         car_count = self.data_list[this_index]['car_count'][this_frame_index]
         max_skip = self.data_list[this_index]['max_skip'][this_frame_index]
         real_boxes = self.data_list[this_index]['boxlists'][max(0, this_frame_index - self.n_box):this_frame_index]
         box_lists = [torch.Tensor([])] * (self.n_box - len(real_boxes)) + real_boxes
-        return (frame, box_lists), (car_count, max_skip)
+
+        if self.use_image:
+            return (frame, box_lists), (car_count, max_skip)
+        else:
+            return box_lists, (car_count, max_skip)
 
     def __iter__(self):
         return self
@@ -98,7 +103,7 @@ class VideoSamplerDataset:
         return self.__next__()
 
 
-def create_train_test_datasets(folder, suffix, episode_mode=False, train_proportion=0.6, n_box=5):
+def create_train_test_datasets(folder, suffix, episode_mode=False, use_image=True, train_proportion=0.6, n_box=5):
     assert train_proportion <= 1
     assert len(suffix) > 1
     if suffix[0] != '.':
@@ -114,5 +119,5 @@ def create_train_test_datasets(folder, suffix, episode_mode=False, train_proport
 
     print(f'===> Got {len(train_pairs)} training clips, and {len(test_pairs)} test clips.')
     return \
-        VideoSamplerDataset(train_pairs, cross_video=(not episode_mode), n_box=n_box), \
-        VideoSamplerDataset(test_pairs, n_box=n_box)
+        VideoSamplerDataset(train_pairs, cross_video=(not episode_mode), n_box=n_box, use_image=use_image), \
+        VideoSamplerDataset(test_pairs, n_box=n_box, use_image=use_image)

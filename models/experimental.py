@@ -17,3 +17,30 @@ class ImagePolicyNet(nn.Module, ABC):
 
     def forward(self, x):
         return self.backbone(x)
+
+
+class SeriesLinearPolicyNet(nn.Module, ABC):
+    def __init__(self, n_inp, n_opt):
+        super(SeriesLinearPolicyNet, self).__init__()
+        self.fc = nn.Linear(n_inp, n_opt)
+
+    def forward(self, series):
+        return self.fc(series.view(series.shape[0], -1))
+
+
+class SeriesUnlinearPolicyNet(nn.Module, ABC):
+    def __init__(self, n_inp, n_opt):
+        super(SeriesUnlinearPolicyNet, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(n_inp, n_inp),
+            nn.LeakyReLU(),
+            nn.Linear(n_inp, n_inp // 2),
+            nn.LeakyReLU(),
+            nn.Linear(n_inp // 2, n_opt)
+        )
+
+    def forward(self, x):
+        # Input Format: [Batch, Data]
+        return self.fc(x.view(x.shape[0], -1))
+
+

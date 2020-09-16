@@ -1,3 +1,13 @@
+"""
+Execution Command:
+var=1 && \
+for i in $(seq 4);
+    do declare -i var=var*2 && \
+        python best_evaluator.py --action_space $var && \
+        python random_evaluator.py --action_space $var ;
+done
+"""
+
 import os
 import sys
 import random
@@ -8,15 +18,18 @@ project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
 from utility.videoloader import create_train_test_datasets
+import argparse
 
-EPOCH = 3
-BATCH_SIZE = 128
-FACTOR = 4
-RATE_OPTIONS = np.arange(16)
+parser = argparse.ArgumentParser()
+parser.add_argument('--action_space', type=int, default=16)
+cfg = parser.parse_args()
+
+print('Configuration Parameters: ')
+print(cfg)
+
+RATE_OPTIONS = np.arange(cfg.action_space)
 VIDEO_FOLDER = os.path.join(project_dir, 'data')
-LOSS_RECORD_DUR = BATCH_SIZE * 32
 VIDEO_SUFFIX = '.avi'
-PRETRAINED_PATH = None
 
 
 if __name__ == '__main__':
@@ -36,4 +49,4 @@ if __name__ == '__main__':
         random_denominator += len(res)
     avg_accuracy = random_numerator / random_denominator
     print(
-        f'Random skipping: skipped_frames: {skip_accum} / {len(test_data)}, avg_accuracy: {avg_accuracy * 100:.3f} %')
+        f'Best skipping: skipped_frames: {skip_accum} / {len(test_data)} = {skip_accum / len(test_data) * 100:.3f}%, avg_accuracy: {avg_accuracy * 100:.3f} %')
