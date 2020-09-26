@@ -3,3 +3,5 @@ data
 .pt
 __pycache__
 .vscode
+
+!application/carcounter/data
