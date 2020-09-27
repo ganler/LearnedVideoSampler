@@ -87,13 +87,15 @@ if __name__ == '__main__':
                         counter.viz(pred, frame)
 
                     car_count = len(pred[0])
-                    if car_count != last_result and frame_id != 0:
+                    if car_count != last_result and frame_id != 0 or frame_id == clip_image_num - 1:
                         assign_index_range = np.arange(last_sample_start, frame_id)
                         clip_data['max_skip'][assign_index_range] = frame_id - assign_index_range
                         skip = frame_id - last_sample_start
                         if skip > max_skip:
                             max_skip = skip
                             print(f'MAX SKIP in {video}:clip:{clip_id} updated to => {max_skip}')
+                        if frame_id == clip_image_num - 1:
+                            clip_data['max_skip'][np.arange(last_sample_start, frame_id + 1)] += 1
                         last_sample_start = frame_id
 
                     last_result = car_count
