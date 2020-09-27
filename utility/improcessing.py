@@ -15,8 +15,9 @@ def opticalflow(l, r):
 
 @torch.no_grad()
 def totensor(im, wh, batch_dim=False):
+    # No need to convert BGR to RGB for optical flow
     im = cv2.resize(im, wh)
-    inp = im[:, :, ::-1].transpose(2, 0, 1)
+    inp = im.transpose(2, 0, 1) # W H C => C W H
     inp = np.ascontiguousarray(inp, dtype=np.float32)
     inp = torch.from_numpy(inp) / 255.
 

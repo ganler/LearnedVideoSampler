@@ -37,7 +37,7 @@ TODO enhancements:
 
 
 class CAPDataset(Dataset):
-    def __init__(self, clip_home, outlier_size=10, sample_rate=0.2):
+    def __init__(self, clip_home, outlier_size=30, sample_rate=0.5):
         self.entries: List[Entry] = []
 
         # Create TemporalSets.
@@ -51,14 +51,13 @@ class CAPDataset(Dataset):
             index = 0
             while index < len(max_skip):
                 end = index + max_skip[index]
-                if max_skip[index] == 0:
-                    raise Exception('fuck')
                 if end + outlier_size > len(max_skip):
                     break
                 if max_skip[index] < 3:  # No skip? No set!
                     index = end
                     continue
-                interior_range = (index, end)
+
+                interior_range = range(index, end)
                 border_outlier = [int(car_count[ind])
                                   for ind in range(end, end + outlier_size) if car_count[ind] == car_count[0]]
                 
@@ -76,12 +75,12 @@ class CAPDataset(Dataset):
                 for x in pos:
                     l = os.path.join(folder, f'{x[0]}.jpg')
                     r = os.path.join(folder, f'{x[1]}.jpg')
-                    self.entries.append(Entry(l, r, True))
+                    self.entries.append(Entry(l, r, 1))
 
                 for x in neg:
                     l = os.path.join(folder, f'{x[0]}.jpg')
                     r = os.path.join(folder, f'{x[1]}.jpg')
-                    self.entries.append(Entry(l, r, False))
+                    self.entries.append(Entry(l, r, 0)) # 0 => False
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -90,7 +89,6 @@ class CAPDataset(Dataset):
         l, r, label = self.entries[index]
         l = cv2.imread(l)
         r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
-        print(l.shape)
         flow = opticalflow(l, r)
         im = np.zeros((*l.shape[:2], 3))
         im[:, :, :2] += flow
