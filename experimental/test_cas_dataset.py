@@ -31,7 +31,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(dataset=train, batch_size=16, shuffle=True, num_workers=8)
     test_loader = DataLoader(dataset=test, batch_size=16, shuffle=False, num_workers=8)
 
-    for epoch in range(2):
+    for epoch in range(4):
         running_loss = 0.0
         for i, data in enumerate(train_loader, 0):
             x, y = data
