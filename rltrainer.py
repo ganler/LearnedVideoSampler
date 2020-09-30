@@ -26,7 +26,6 @@ RATE_OPTIONS = np.arange(16)
 VIDEO_FOLDER = os.path.join(project_dir, 'data')
 LOSS_RECORD_DUR = 10
 GAMMA = 0.9
-VIDEO_SUFFIX = '.avi'
 PRETRAINED_PATH = None
 TARGET_UPDATE = 10
 ACCURACY_SLA = 0.95
@@ -69,7 +68,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.RMSprop(policy_net.parameters(), lr=0.01, weight_decay=0.1)
 
     train_data, test_data = create_train_test_datasets(
-        folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, episode_mode=True, train_proportion=0.8)
+        folder=VIDEO_FOLDER, episode_mode=True, train_proportion=0.8)
     records = {
         'reward': [],
         'skipped_frames': [],

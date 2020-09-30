@@ -20,14 +20,26 @@ from models.experimental import ImagePolicyNet
 from utility.imcliploader import CAPDataset
 
 EPOCH_N = 4
+EVAL_MODE = 1
+# 0: use val_data_non_general
 
 if __name__ == "__main__":
+    torch.manual_seed(0)
     model = ImagePolicyNet(n_opt=2).cuda()
     loss_func = nn.CrossEntropyLoss()
     optimizer = torch.optim.RMSprop(model.parameters())
 
-    train = CAPDataset(os.path.join(project_dir, 'data'))
-    test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8)
+    train = None
+    test = None
+
+    if EVAL_MODE == 1:
+        dataset = CAPDataset(os.path.join(project_dir, 'data'))
+        to_train = int(len(dataset) * 0.9)
+        train, test = torch.utils.data.random_split(dataset, [to_train, len(dataset) - to_train])
+    
+    if EVAL_MODE == 0:
+        train = CAPDataset(os.path.join(project_dir, 'data'))
+        test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8)
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 

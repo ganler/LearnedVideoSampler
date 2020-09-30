@@ -95,6 +95,7 @@ class CAPDataset(Dataset):
 
 ClipElement = namedtuple('ClipElement', ('path', 'max_size', 'labels'))
 
+
 class CASEvaluator:
     def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor):
         self.clips: List[ClipElement] = []
@@ -163,4 +164,4 @@ class CASEvaluator:
             predicted = np.array(predicted)
             ret_pred.append((np.minimum(predicted, c.labels) / np.maximum(predicted, c.labels)).mean())
             ret_skip.append(skipped_size[0] / len(c.labels))
-        return ret_pred, ret_skip
+        return np.array(ret_pred), np.array(ret_skip)

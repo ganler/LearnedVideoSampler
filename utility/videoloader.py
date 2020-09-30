@@ -7,34 +7,33 @@ import torch
 
 
 class VideoSamplerDataset:
-    cap_list: List[cv2.VideoCapture] = []
+    frame_indices: List[int] = []
     cur_ptr = None
     ptr = None
     last_ptr = None
 
-    def __init__(self, data_pairs: List[Tuple[str, str]], cross_video=False, use_image=True, n_box=5, discount=0.95):
-        self.data_pairs = data_pairs
+    def __init__(self, dirlist, cross_video=False, use_image=True, n_box=5, discount=0.95):
+        self.dirlist = dirlist
         self.n_box = n_box
         self.cross_video = cross_video
         self.data_list = []
         self.use_image = use_image
-        for _, npy_path in self.data_pairs:
-            full_data: Dict = np.load(npy_path, allow_pickle=True).item()
+        for f in dirlist:
+            full_data: Dict = np.load(
+                os.path.join(f, 'result.npy'), allow_pickle=True).item()
             discount_index = int(len(full_data['car_count']) * discount)
             full_data['max_skip'] -= 1
             for k in full_data:
                 full_data[k] = full_data[k][:discount_index]
             self.data_list.append(full_data)
+            self.frame_indices.append(0)
         self.total_samples_number = sum([len(x['car_count']) for x in self.data_list])
 
     def reset(self):
-        for x in self.cap_list:
-            x.release()
-        self.cap_list: List[cv2.VideoCapture] = []
-        for clip_path, _ in self.data_pairs:
-            self.cap_list.append(cv2.VideoCapture(clip_path))
+        for x in self.frame_indices:
+            x = 0
         self.cur_ptr = 0
-        self.ptr = np.zeros(len(self.cap_list), dtype=np.int32)
+        self.ptr = np.zeros(len(self.frame_indices), dtype=np.int32)
 
     def __len__(self):
         return self.total_samples_number
@@ -62,9 +61,8 @@ class VideoSamplerDataset:
 
         frame = None
         if self.use_image:
-            ret, frame = self.cap_list[this_index].read()
-            if not ret:
-                print(f'Got bad videos... {self.data_pairs[this_index][0]}')
+            frame = cv2.imread(os.path.join(self.dirlist[this_index], f'{self.frame_indices[this_index]}.jpg'))
+            self.frame_indices[this_index] += 1
 
         car_count = self.data_list[this_index]['car_count'][this_frame_index]
         max_skip = self.data_list[this_index]['max_skip'][this_frame_index]
@@ -84,8 +82,7 @@ class VideoSamplerDataset:
         self.ptr[self.last_ptr] += n
         is_over = self.ptr[self.last_ptr] >= len(self.data_list[self.last_ptr]['car_count'])
         if not is_over and n != 0:
-            self.cap_list[self.last_ptr].set(
-                cv2.CAP_PROP_POS_FRAMES, self.ptr[self.last_ptr])
+            self.frame_indices[self.last_ptr] = self.ptr[self.last_ptr]
 
         car_counts = self.data_list[self.last_ptr]['car_count']
         predicted_val = car_counts[last_frame_ptr]
@@ -104,19 +101,13 @@ class VideoSamplerDataset:
         return self.__next__()
 
 
-def create_train_test_datasets(folder, suffix, episode_mode=False, use_image=True, train_proportion=0.6, n_box=5):
+def create_train_test_datasets(folder, episode_mode=False, use_image=True, train_proportion=0.6, n_box=5):
     assert train_proportion <= 1
-    assert len(suffix) > 1
-    if suffix[0] != '.':
-        suffix = '.' + suffix
-    name_tokens = [x.replace(suffix, '') for x in os.listdir(folder) if x.endswith(suffix)]
-    data_pairs = []
+    dirlist = [os.path.join(folder, x) for x in os.listdir(folder) if os.path.isdir(os.path.join(folder, x))]
     random.seed(0)
-    random.shuffle(name_tokens)  # Shuffle.
-    for t in name_tokens:
-        data_pairs.append((os.path.join(folder, t + suffix), os.path.join(folder, t + '.npy')))
-    split_index = int(train_proportion * len(data_pairs))
-    train_pairs, test_pairs = data_pairs[:split_index], data_pairs[split_index:]
+    random.shuffle(dirlist)  # Shuffle.
+    split_index = int(train_proportion * len(dirlist))
+    train_pairs, test_pairs = dirlist[:split_index], dirlist[split_index:]
 
     print(f'===> Got {len(train_pairs)} training clips, and {len(test_pairs)} test clips.')
     return \

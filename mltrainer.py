@@ -22,7 +22,6 @@ FACTOR = 4
 RATE_OPTIONS = np.arange(16)
 VIDEO_FOLDER = os.path.join(project_dir, 'data')
 LOSS_RECORD_DUR = 8000
-VIDEO_SUFFIX = '.avi'
 PRETRAINED_PATH = None
 
 # def sampler_loss_function(pred: torch.Tensor, label: torch.Tensor):
@@ -41,7 +40,7 @@ if __name__ == '__main__':
     loss_func = nn.CrossEntropyLoss()
     optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3, momentum=0.2)
 
-    train_data, test_data = create_train_test_datasets(folder=VIDEO_FOLDER, suffix=VIDEO_SUFFIX, train_proportion=0.8)
+    train_data, test_data = create_train_test_datasets(folder=VIDEO_FOLDER, train_proportion=0.8)
     records = {
         'loss': [],
         'skipped_frames': [],
