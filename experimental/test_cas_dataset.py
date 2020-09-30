@@ -24,7 +24,7 @@ EPOCH_N = 4
 if __name__ == "__main__":
     model = ImagePolicyNet(n_opt=2).cuda()
     loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.RMSprop(model.parameters(), weight_decay)
+    optimizer = torch.optim.RMSprop(model.parameters())
 
     train = CAPDataset(os.path.join(project_dir, 'data'))
     test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8)

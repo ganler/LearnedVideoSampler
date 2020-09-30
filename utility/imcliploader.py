@@ -93,11 +93,7 @@ class CAPDataset(Dataset):
         r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
         return self.combinator(l, r), label
 
-@dataclass
-class ClipElement:
-    path = None
-    max_size = None
-    labels = None
+ClipElement = namedtuple('ClipElement', ('path', 'max_size', 'labels'))
 
 class CASEvaluator:
     def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor):
@@ -114,25 +110,25 @@ class CASEvaluator:
     def evaluate(self, model):
         ret_pred = []
         ret_skip = []
-        for c in self.clips:
+        for cc in tqdm(self.clips):
+            c = cc
             predicted = np.ones(c.max_size) * -1 # -1 is a flag.
-            skipped_size = 0
+            
             def fetch_one(index):
                 return cv2.imread(os.path.join(c.path, f'{index}.jpg'))
 
-            def CAS(begin, end):
+            def CAS(begin, end, skipped_size):
                 # [begin] [end]
-                global predicted, skipped_size, model, c
-                if end - begin <= 1:
+                if end == begin:
                     return
                 # [begin] [?] [end]
                 # [begin] [?] [?] [end]
-                if end - begin <= 3:
+                if end - begin <= 2:
                     predicted[begin] = c.labels[begin]
                     predicted[end - 1] = c.labels[end - 1]
                     return
                 
-                if end - begin > 3:
+                if end - begin > 2:
                     lc = c.labels[begin]
                     rc = c.labels[end - 1]
                     predicted[begin] = lc
@@ -140,24 +136,31 @@ class CASEvaluator:
                     if lc == rc and torch.max(
                         model.forward(
                             self.combinator(
-                                fetch_one(begin), fetch_one(end - 1)
-                                ).cuda()
-                                ).data, 1)[1].cpu().numpy()[0] == True:
-                        predicted[begin+1 : end - 2] = lc
+                                fetch_one(begin), fetch_one(end - 1), batch_dim=True
+                                ).cuda()).data, 1)[1].cpu().numpy()[0] == True:
+                        predicted[begin+1 : end-1] = lc
                         skipped_size += (end - begin - 1)
                     else:
-                        partition = begin + 1 + (end - begin - 1) // 2
-                        CAS(begin + 1, partition)
-                        CAS(partition, end - 1)
+                        partition = (end + begin) // 2
+                        CAS(begin + 1, partition, skipped_size)
+                        CAS(partition, end - 1, skipped_size)
 
             begin_ = 0
             end_ = 0
+            skipped_size = np.array([0])
+
             while end_ != c.max_size:
                 end_ = min(begin_ + self.fetch_size, c.max_size)
-                CAS(begin_, end_)
-                begin_ = end_ + 1
+                CAS(begin_, end_, skipped_size)
+                begin_ = end_
 
-            assert (predicted < 0).sum() <= 0 # No one is negative.
-            ret_pred.append(predicted)
-            ret_skip.append(skipped_size)
+            bugs = (predicted < 0).nonzero()[0]
+            if len(bugs) != 0:
+                print(predicted)
+                print(bugs)
+                raise Exception('Bugs occurred: There are unchecked frames...')
+
+            predicted = np.array(predicted)
+            ret_pred.append((np.minimum(predicted, c.labels) / np.maximum(predicted, c.labels)).mean())
+            ret_skip.append(skipped_size[0] / len(c.labels))
         return ret_pred, ret_skip
