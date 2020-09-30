@@ -9,6 +9,7 @@ Dataloader in PyTorch Style.
 * This is used for imitation learning/simple machine learning.
 '''
 
+from dataclasses import dataclass
 from random import sample
 import torch
 import numpy as np
@@ -18,7 +19,7 @@ import random
 from typing import List, NamedTuple
 from collections import namedtuple
 from itertools import combinations
-from .improcessing import opticalflow, totensor
+from .improcessing import opticalflow2tensor
 import cv2
 from tqdm import tqdm
 
@@ -37,8 +38,9 @@ TODO enhancements:
 
 
 class CAPDataset(Dataset):
-    def __init__(self, clip_home, outlier_size=30, sample_rate=0.5):
+    def __init__(self, clip_home, outlier_size=30, sample_rate=0.5, combinator=opticalflow2tensor):
         self.entries: List[Entry] = []
+        self.combinator = combinator
 
         # Create TemporalSets.
         folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x))]
@@ -89,8 +91,73 @@ class CAPDataset(Dataset):
         l, r, label = self.entries[index]
         l = cv2.imread(l)
         r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
-        flow = opticalflow(l, r)
-        im = np.zeros((*l.shape[:2], 3))
-        im[:, :, :2] += flow
-        return totensor(im, wh=l.shape[1::-1]), label
-        
+        return self.combinator(l, r), label
+
+@dataclass
+class ClipElement:
+    path = None
+    max_size = None
+    labels = None
+
+class CASEvaluator:
+    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor):
+        self.clips: List[ClipElement] = []
+        self.fetch_size = fetch_size
+        self.combinator = combinator
+        for f in os.listdir(folder):
+            if os.path.isdir(os.path.join(folder, f)):
+                path = os.path.join(folder, f)
+                labels = np.load(os.path.join(path, 'result.npy'), allow_pickle=True).item()['car_count']
+                max_size = len(labels)
+                self.clips.append(ClipElement(path=path, max_size=max_size, labels=labels))
+
+    def evaluate(self, model):
+        ret_pred = []
+        ret_skip = []
+        for c in self.clips:
+            predicted = np.ones(c.max_size) * -1 # -1 is a flag.
+            skipped_size = 0
+            def fetch_one(index):
+                return cv2.imread(os.path.join(c.path, f'{index}.jpg'))
+
+            def CAS(begin, end):
+                # [begin] [end]
+                global predicted, skipped_size, model, c
+                if end - begin <= 1:
+                    return
+                # [begin] [?] [end]
+                # [begin] [?] [?] [end]
+                if end - begin <= 3:
+                    predicted[begin] = c.labels[begin]
+                    predicted[end - 1] = c.labels[end - 1]
+                    return
+                
+                if end - begin > 3:
+                    lc = c.labels[begin]
+                    rc = c.labels[end - 1]
+                    predicted[begin] = lc
+                    predicted[end - 1] = rc
+                    if lc == rc and torch.max(
+                        model.forward(
+                            self.combinator(
+                                fetch_one(begin), fetch_one(end - 1)
+                                ).cuda()
+                                ).data, 1)[1].cpu().numpy()[0] == True:
+                        predicted[begin+1 : end - 2] = lc
+                        skipped_size += (end - begin - 1)
+                    else:
+                        partition = begin + 1 + (end - begin - 1) // 2
+                        CAS(begin + 1, partition)
+                        CAS(partition, end - 1)
+
+            begin_ = 0
+            end_ = 0
+            while end_ != c.max_size:
+                end_ = min(begin_ + self.fetch_size, c.max_size)
+                CAS(begin_, end_)
+                begin_ = end_ + 1
+
+            assert (predicted < 0).sum() <= 0 # No one is negative.
+            ret_pred.append(predicted)
+            ret_skip.append(skipped_size)
+        return ret_pred, ret_skip

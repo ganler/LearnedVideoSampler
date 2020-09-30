@@ -9,6 +9,7 @@ import os
 from torch.utils.data import DataLoader, random_split
 from torch import nn
 from tqdm import tqdm
+from datetime import datetime
 import numpy as np
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -18,10 +19,12 @@ from models.experimental import ImagePolicyNet
 
 from utility.imcliploader import CAPDataset
 
+EPOCH_N = 4
+
 if __name__ == "__main__":
     model = ImagePolicyNet(n_opt=2).cuda()
     loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=5e-3)
+    optimizer = torch.optim.RMSprop(model.parameters(), weight_decay)
 
     train = CAPDataset(os.path.join(project_dir, 'data'))
     test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8)
@@ -31,7 +34,9 @@ if __name__ == "__main__":
     train_loader = DataLoader(dataset=train, batch_size=16, shuffle=True, num_workers=8)
     test_loader = DataLoader(dataset=test, batch_size=16, shuffle=False, num_workers=8)
 
-    for epoch in range(4):
+    loss_record = []
+    precision_record = []
+    for epoch in range(EPOCH_N):
         running_loss = 0.0
         for i, data in enumerate(train_loader, 0):
             x, y = data
@@ -42,8 +47,10 @@ if __name__ == "__main__":
 
             # print statistics
             running_loss += loss.item()
-            if (i + 1) % (int(len(train_loader) * 0.25)) == 0:
-                print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 2000))
+            check_size = int(len(train_loader) * 0.25)
+            if (i + 1) % (check_size) == 0:
+                print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / check_size))
+                loss_record.append(running_loss / check_size)
                 running_loss = 0.0
                 n_right = 0
                 for x, y in tqdm(test_loader):
@@ -52,3 +59,14 @@ if __name__ == "__main__":
                         _, predicted = torch.max(out.data, 1)
                         n_right += (predicted.cpu().numpy() == np.array(y)).sum()
                 print(f'Validation accuracy: {n_right / len(test) * 100:.2f} %')
+                precision_record.append(n_right / len(test))
+
+
+    record_sign = f'{datetime.now().isoformat().split(".")[0]}-epoch-{EPOCH_N}-samples-{len(train)}'
+    aim_dir = os.path.join(project_dir, 'trained', record_sign)
+    os.mkdir(aim_dir)
+    torch.save(
+        model.state_dict(),
+        os.path.join(aim_dir, 'mlmodel.pth'))
+    np.save(os.path.join(aim_dir, 'loss.npy'), np.array(loss_record))
+    np.save(os.path.join(aim_dir, 'train_acc.npy'), np.array(precision_record), )

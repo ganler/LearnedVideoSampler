@@ -60,6 +60,7 @@ class VideoSamplerDataset:
         this_frame_index = self.ptr[this_index]
         self.ptr[this_index] += 1
 
+        frame = None
         if self.use_image:
             ret, frame = self.cap_list[this_index].read()
             if not ret:

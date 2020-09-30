@@ -13,6 +13,12 @@ def opticalflow(l, r):
     flow = cv2.calcOpticalFlowFarneback(l, r, None, 0.5, 3, 15, 3, 5, 1.2, 0)
     return flow
 
+def opticalflow2tensor(l, r):
+    flow = opticalflow(l, r)
+    im = np.zeros((*l.shape[:2], 3))
+    im[:, :, :2] += flow
+    return totensor(im, wh=l.shape[1::-1])
+
 @torch.no_grad()
 def totensor(im, wh, batch_dim=False):
     # No need to convert BGR to RGB for optical flow
