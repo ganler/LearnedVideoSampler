@@ -7,8 +7,8 @@ import torch
 
 
 class VideoSamplerDataset:
-    frame_indices: List[int] = []
-    cur_ptr = None
+    current_frame_ptr: List[int] = []
+    cur_video_ptr = None
     ptr = None
     last_ptr = None
 
@@ -22,18 +22,18 @@ class VideoSamplerDataset:
             full_data: Dict = np.load(
                 os.path.join(f, 'result.npy'), allow_pickle=True).item()
             discount_index = int(len(full_data['car_count']) * discount)
-            full_data['max_skip'] -= 1
+            full_data['max_skip'] -= 1 # Make it compatible
             for k in full_data:
                 full_data[k] = full_data[k][:discount_index]
             self.data_list.append(full_data)
-            self.frame_indices.append(0)
+            self.current_frame_ptr.append(0)
         self.total_samples_number = sum([len(x['car_count']) for x in self.data_list])
 
     def reset(self):
-        for x in self.frame_indices:
+        for x in self.current_frame_ptr:
             x = 0
-        self.cur_ptr = 0
-        self.ptr = np.zeros(len(self.frame_indices), dtype=np.int32)
+        self.cur_video_ptr = 0
+        self.ptr = np.zeros(len(self.current_frame_ptr), dtype=np.int32)
 
     def __len__(self):
         return self.total_samples_number
@@ -48,11 +48,11 @@ class VideoSamplerDataset:
                 raise StopIteration('Data exhausted...')
             this_index = candidates[random.randint(0, len(candidates) - 1)]
         else:  # e.g., read all of video 0, then video 1, ... till video[final]
-            if self.ptr[self.cur_ptr] >= len(self.data_list[self.cur_ptr]['car_count']):  # Current clip exhausted.
-                self.cur_ptr += 1  # Next One.
-            if self.cur_ptr >= len(self.data_list):
+            if self.ptr[self.cur_video_ptr] >= len(self.data_list[self.cur_video_ptr]['car_count']):  # Current clip exhausted.
+                self.cur_video_ptr += 1  # Next One.
+            if self.cur_video_ptr >= len(self.data_list):
                 raise StopIteration('Data exhausted...')
-            this_index = self.cur_ptr
+            this_index = self.cur_video_ptr
 
         self.last_ptr = this_index
 
@@ -61,8 +61,8 @@ class VideoSamplerDataset:
 
         frame = None
         if self.use_image:
-            frame = cv2.imread(os.path.join(self.dirlist[this_index], f'{self.frame_indices[this_index]}.jpg'))
-            self.frame_indices[this_index] += 1
+            frame = cv2.imread(os.path.join(self.dirlist[this_index], f'{self.current_frame_ptr[this_index]}.jpg'))
+            self.current_frame_ptr[this_index] += 1
 
         car_count = self.data_list[this_index]['car_count'][this_frame_index]
         max_skip = self.data_list[this_index]['max_skip'][this_frame_index]
@@ -81,19 +81,17 @@ class VideoSamplerDataset:
         last_frame_ptr = self.ptr[self.last_ptr] - 1
         self.ptr[self.last_ptr] += n
         is_over = self.ptr[self.last_ptr] >= len(self.data_list[self.last_ptr]['car_count'])
+
         if not is_over and n != 0:
-            self.frame_indices[self.last_ptr] = self.ptr[self.last_ptr]
+            self.current_frame_ptr[self.last_ptr] = self.ptr[self.last_ptr]
 
         car_counts = self.data_list[self.last_ptr]['car_count']
         predicted_val = car_counts[last_frame_ptr]
         max_item_size = len(car_counts)
 
-        ret = [1]
-        for label in car_counts[
-                     min(last_frame_ptr + 1, max_item_size):min(last_frame_ptr + 1 + n, max_item_size)]:
-            min_val = min(predicted_val, label)
-            max_val = max(predicted_val, label)
-            ret.append(min_val / max_val if max_val != 0 else 1.)
+        # MAE.
+        ret = np.abs(
+            car_counts[min(last_frame_ptr, max_item_size):min(last_frame_ptr + 1 + n, max_item_size)] - predicted_val)
 
         return ret, is_over
 

@@ -16,39 +16,42 @@ project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
 from models.experimental import ImagePolicyNet
-
 from utility.imcliploader import CAPDataset
+import argparse
 
-EPOCH_N = 4
-EVAL_MODE = 1
-# 0: use val_data_non_general
+parser = argparse.ArgumentParser()
+parser.add_argument('--use_fixed_valdata', type=bool, default=True)
+parser.add_argument('--epoch', type=int, default=4)
+parser.add_argument('--pretrained_backbone', type=bool, default=False)
+cfg = parser.parse_args()
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
-    model = ImagePolicyNet(n_opt=2).cuda()
-    loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.RMSprop(model.parameters())
+    model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
+    best_model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone)
 
+    loss_func = nn.CrossEntropyLoss()
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3)
+
+    best_val_accuracy = 0
     train = None
     test = None
 
-    if EVAL_MODE == 1:
+    if not cfg.use_fixed_valdata:
         dataset = CAPDataset(os.path.join(project_dir, 'data'))
         to_train = int(len(dataset) * 0.9)
         train, test = torch.utils.data.random_split(dataset, [to_train, len(dataset) - to_train])
-    
-    if EVAL_MODE == 0:
+    else:
         train = CAPDataset(os.path.join(project_dir, 'data'))
         test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8)
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 
-    train_loader = DataLoader(dataset=train, batch_size=16, shuffle=True, num_workers=8)
-    test_loader = DataLoader(dataset=test, batch_size=16, shuffle=False, num_workers=8)
+    train_loader = DataLoader(dataset=train, batch_size=16, shuffle=True, num_workers=16)
+    test_loader = DataLoader(dataset=test, batch_size=16, shuffle=False, num_workers=16)
 
     loss_record = []
     precision_record = []
-    for epoch in range(EPOCH_N):
+    for epoch in range(cfg.epoch):
         running_loss = 0.0
         for i, data in enumerate(train_loader, 0):
             x, y = data
@@ -70,15 +73,18 @@ if __name__ == "__main__":
                         out = model(x.cuda())
                         _, predicted = torch.max(out.data, 1)
                         n_right += (predicted.cpu().numpy() == np.array(y)).sum()
-                print(f'Validation accuracy: {n_right / len(test) * 100:.2f} %')
-                precision_record.append(n_right / len(test))
+                acc = n_right / len(test)
+                print(f'Validation accuracy: {acc * 100:.2f} %')
+                precision_record.append(acc)
+                if acc > best_val_accuracy:
+                    best_model.load_state_dict(model.state_dict())
 
 
-    record_sign = f'{datetime.now().isoformat().split(".")[0]}-epoch-{EPOCH_N}-samples-{len(train)}'
+    record_sign = f'{datetime.now().isoformat().split(".")[0]}-epoch-{cfg.epoch}-samples-{len(train)}'
     aim_dir = os.path.join(project_dir, 'trained', record_sign)
     os.mkdir(aim_dir)
     torch.save(
-        model.state_dict(),
+        best_model.state_dict(),
         os.path.join(aim_dir, 'mlmodel.pth'))
     np.save(os.path.join(aim_dir, 'loss.npy'), np.array(loss_record))
     np.save(os.path.join(aim_dir, 'train_acc.npy'), np.array(precision_record), )

@@ -47,8 +47,8 @@ if __name__ == '__main__':
     pred = timed(lambda: counter.predict(inp), f'YOLOv3 Inference @ {inp.shape[2:]}\t')  # Bounding box list.
     after_box2list = timed(lambda: boxlist2tensor(pred, config.resolution).cuda(), 'BoxList Encoding\t\t\t\t')
     if imshow:
-        counter.viz(pred, raw_image)
-        cv2.waitKey()
+        vized = counter.viz(pred, raw_image, imshow=False)
+        cv2.imwrite('example.png', vized)
 
     model = SamplerBackbone(cfg.n_opt) if cfg.model == 0 else ImagePolicyNet(cfg.n_opt)
     model.eval()
@@ -70,6 +70,5 @@ if __name__ == '__main__':
     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
     # prof.export_chrome_trace("trace.json")
     # cv2.waitKey()
-    #
-    if imshow:
-        cv2.destroyAllWindows()
+
+    

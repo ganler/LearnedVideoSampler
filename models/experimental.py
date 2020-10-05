@@ -4,7 +4,7 @@ from torch import nn
 from torchvision.models import resnet18
 
 class ImagePolicyNet(nn.Module, ABC):
-    def __init__(self, n_opt, frozen=False, pretrained=True):
+    def __init__(self, n_opt, frozen=False, pretrained=False):
         super(ImagePolicyNet, self).__init__()
         self.backbone = resnet18(pretrained=pretrained)
         self.backbone.fc = nn.Linear(512, n_opt)
@@ -24,7 +24,7 @@ class SeriesLinearPolicyNet(nn.Module, ABC):
         super(SeriesLinearPolicyNet, self).__init__()
         self.fc = nn.Linear(n_inp, n_opt)
 
-    def forward(self, series):
+    def forward(self, x):
         return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
 
 

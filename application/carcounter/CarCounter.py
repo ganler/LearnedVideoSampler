@@ -75,7 +75,7 @@ class CarCounter:
         #     print(f'Time elapsed: {1000 * (torch_utils.time_synchronized() - t1)} ms. Detected cars :=> {len(p)}')
         return pred
 
-    def viz(self, pred: torch.Tensor, img):
+    def viz(self, pred: torch.Tensor, img, imshow=True):
         img = cv2.resize(img, self.config.resolution)
         for i, det in enumerate(pred):  # detections for image i
             if det is not None and len(det):
@@ -87,6 +87,8 @@ class CarCounter:
                     plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
 
         # Stream results
-        cv2.imshow('viz', img)
-        if cv2.waitKey(1) == ord('q'):  # q to quit
-            raise StopIteration
+        if imshow:
+            cv2.imshow('viz', img)
+            if cv2.waitKey(1) == ord('q'):  # q to quit
+                raise StopIteration
+        return img

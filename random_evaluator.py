@@ -21,14 +21,16 @@ from utility.videoloader import VideoSamplerDataset
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--action_space', type=int, default=16)
+parser.add_argument('--action_space', type=int, default=64)
+parser.add_argument('--mae', type=float, default=1)
+parser.add_argument('--dir', type=str, default='val_data_non_general')
 cfg = parser.parse_args()
 
 print('Configuration Parameters: ')
 print(cfg)
 
-RATE_OPTIONS = np.arange(cfg.action_space)
-VIDEO_FOLDER = os.path.join(project_dir, 'val_data_non_general')
+RATE_OPTIONS = np.arange(cfg.action_space)  # Skipping size starts from 0.
+VIDEO_FOLDER = os.path.join(project_dir, cfg.dir)
 
 
 if __name__ == '__main__':
@@ -36,24 +38,36 @@ if __name__ == '__main__':
     print('Evaluation random skipping algorithm ...')
 
     skip_ratio = []
-    acc_list = []
+    mae_list = []
+
     for d in dirlist:
         test_data = VideoSamplerDataset(dirlist=[d], discount=1)
         test_data.reset()
+
+        max_tolerant_miss_counts = int(test_data.total_samples_number * cfg.mae)
+        current_miss_counts = 0
         skip_accum = 0
-        random_numerator = 0
-        random_denominator = 1e-7
+
         for (image, boxlists), (car_cnt, max_skip) in tqdm(test_data):
-            predicted = RATE_OPTIONS[random.randint(0, len(RATE_OPTIONS)-1)]
-            res, _ = test_data.skip_and_evaluate(predicted)
+            predicted = None
+            miss_counts = None
+            if current_miss_counts < max_tolerant_miss_counts:
+                predicted = RATE_OPTIONS[random.randint(0, len(RATE_OPTIONS)-1)]
+                miss_counts, _ = test_data.skip_and_evaluate(predicted)
+            else:
+                predicted = 0
+                miss_counts, _ = test_data.skip_and_evaluate(predicted)
+            
             skip_accum += predicted
-            random_numerator += sum(res)
-            random_denominator += len(res)
-        avg_accuracy = random_numerator / random_denominator
-        acc_list.append(avg_accuracy)
-        skip_ratio.append(skip_accum / len(test_data))
+            current_miss_counts += miss_counts.sum()
+
+        ratio = skip_accum / len(test_data)
+        MAE = current_miss_counts / max_tolerant_miss_counts
+        mae_list.append(MAE)
+        skip_ratio.append(ratio)
         print(
-            f'Random skipping: skipped_frames: {skip_accum} / {len(test_data)} = {skip_accum / len(test_data) * 100:.3f}%, avg_accuracy: {avg_accuracy * 100:.3f} %')
+            f'Random skipping: skipped_frames: {skip_accum} / {len(test_data)} = {ratio * 100:.3f}%, MAE: {MAE:.3f}')
     
-    print(skip_ratio, acc_list)
-    print(np.array(skip_ratio).mean(), np.array(acc_list).mean())
+    print(skip_ratio, mae_list)
+    print(f'AVG Skipping Ratio: {np.array(skip_ratio).mean()}')
+    print(f'AVG MAE : {np.array(mae_list).mean()}')
