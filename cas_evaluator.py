@@ -14,11 +14,12 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--tag', type=str, default=None)
+parser.add_argument('--fetch_size', type=int, default=32)
 parser.add_argument('--pretrained_backbone', type=bool, default=False)
 cfg = parser.parse_args()
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
+    torch.manual_seed(1999)
     model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
     if cfg.tag is not None:
         resdir = os.path.join(project_dir, 'trained')
@@ -29,7 +30,10 @@ if __name__ == "__main__":
         print(f'Using untrained model.')
     model.eval()
     
-    evaluator = CASEvaluator(folder=os.path.join(project_dir, 'val_data_non_general'), fetch_size=16)
-    pred, skip = evaluator.evaluate(model)
-    print(pred, skip)
-    print(pred.mean(), skip.mean())
+    evaluator = CASEvaluator(folder=os.path.join(project_dir, 'val_data_non_general'), fetch_size=cfg.fetch_size)
+    mae, skip = evaluator.evaluate(model)
+
+    print(f'MAEs: {mae}')
+    print(f'Skip Ratios: {skip}')
+    print(f'AVG MAE : {mae.mean()}')
+    print(f'AVG Skipping Ratio: {skip.mean() * 100 :f.3} %')

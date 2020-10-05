@@ -108,8 +108,8 @@ class CASEvaluator:
                 max_size = len(labels)
                 self.clips.append(ClipElement(path=path, max_size=max_size, labels=labels))
 
-    def evaluate(self, model):
-        ret_pred = []
+    def evaluate(self, model, mae_bound=None):
+        ret_mae = []
         ret_skip = []
         for cc in tqdm(self.clips):
             c = cc
@@ -162,6 +162,6 @@ class CASEvaluator:
                 raise Exception('Bugs occurred: There are unchecked frames...')
 
             predicted = np.array(predicted)
-            ret_pred.append((np.minimum(predicted, c.labels) / np.maximum(predicted, c.labels)).mean())
+            ret_mae.append(np.abs(predicted - c.labels).mean())
             ret_skip.append(skipped_size[0] / len(c.labels))
-        return np.array(ret_pred), np.array(ret_skip)
+        return np.array(ret_mae), np.array(ret_skip)
