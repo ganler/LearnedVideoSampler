@@ -60,20 +60,33 @@ class CAPDataset(Dataset):
                     index = end
                     continue
 
-                interior_range = range(index, end)
-                border_outlier = [int(car_count[ind])
-                                  for ind in range(end, end + outlier_size) if car_count[ind] == car_count[0]]
+                # Positive: a * (a - 1) / 2
+                # Negative: ab
+                # a = 2 b + 1
+                interior_range = np.arange(index, end)
+                border_outlier = np.arange(end, end + outlier_size)
+                border_outlier = border_outlier[np.where(car_count[end:end + outlier_size] == car_count[index])[0]]
+
+                a = max(1, int(round(len(interior_range) * sample_rate)))
+                b = max(1, int(round(len(border_outlier) * sample_rate)))
+
+                if a > 2 * b + 1:
+                    a = 2 * b + 1
+                
+                if b > (a - 1) // 2:
+                    b = (a - 1) // 2                
                 
                 index = end
-                if len(border_outlier) == 0:
+                if a == 0 or b == 0 or len(border_outlier) == 0:
                     continue
 
-                pos = [x for x in combinations(interior_range, 2)]
-                neg = [(x, y) for x in interior_range for y in border_outlier]
+                interior_range = interior_range[np.sort(np.random.choice(len(interior_range), a))]
+                border_outlier = border_outlier[np.sort(np.random.choice(len(border_outlier), b))]
 
-                sample_num = int(max(1, min(len(pos), len(neg)) * sample_rate))
-                pos = random.sample(pos, sample_num)
-                neg = random.sample(neg, sample_num)
+                assert border_outlier.min() > interior_range.max()
+
+                pos = [x for x in combinations(interior_range, 2)]
+                neg = np.array(np.meshgrid(interior_range, border_outlier)).T.reshape(-1, 2)
 
                 for x in pos:
                     l = os.path.join(folder, f'{x[0]}.jpg')

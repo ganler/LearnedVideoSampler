@@ -52,7 +52,7 @@ if __name__ == "__main__":
         train, test = torch.utils.data.random_split(dataset, [to_train, len(dataset) - to_train])
     else:
         train = CAPDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
-        test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8, combinator=cfg.combinator)
+        test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), combinator=cfg.combinator)
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 
