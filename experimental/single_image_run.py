@@ -14,6 +14,7 @@ import torch.autograd.profiler as profiler
 from application.carcounter.yolov3.utils import torch_utils
 import cv2
 import numpy as np
+from utility.common import str2bool
 
 
 def timed(caller, name=None):
@@ -29,7 +30,7 @@ model_options = [
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--imshow', type=bool, default=False)
+    parser.add_argument('--imshow', type=str2bool, default=False)
     parser.add_argument('--model', type=int, default=0)
     parser.add_argument('--n_opt', type=int, default=16)
     return parser.parse_args()

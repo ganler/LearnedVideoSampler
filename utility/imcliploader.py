@@ -19,7 +19,7 @@ import random
 from typing import List, NamedTuple
 from collections import namedtuple
 from itertools import combinations
-from .improcessing import opticalflow2tensor
+from .improcessing import opticalflow2tensor, concat3channel2tensor
 import cv2
 from tqdm import tqdm
 
@@ -38,12 +38,13 @@ TODO enhancements:
 
 
 class CAPDataset(Dataset):
-    def __init__(self, clip_home, outlier_size=30, sample_rate=0.5, combinator=opticalflow2tensor):
+    def __init__(self, clip_home, outlier_size=30, fraction=1.0, sample_rate=0.25, combinator=opticalflow2tensor):
         self.entries: List[Entry] = []
         self.combinator = combinator
 
         # Create TemporalSets.
         folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x))]
+        folderlist = folderlist[:int(round(len(folderlist) * fraction))]
         print('Loading data...')
         for folder in tqdm(folderlist):
             folder = os.path.join(clip_home, folder)

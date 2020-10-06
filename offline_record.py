@@ -3,14 +3,22 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
+# FIXME
+# >> v0: 0~622
+# >> v1: 0~669
+# >> v2: 0~328
+# >> To be further processed.
+
 import os
 import sys
 
 project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
+from utility.common import str2bool
 from application.carcounter import CarCounter
 from tqdm import tqdm
+import argparse
 
 import cv2
 import numpy as np
@@ -30,15 +38,13 @@ config = CarCounter.YOLOConfig()
 
 CLIP_FOLDER_SUFFIX = '__clip'
 
-import argparse
-
 parser = argparse.ArgumentParser()
-parser.add_argument('--imshow', type=bool, default=False)
+parser.add_argument('--imshow', type=str2bool, default=False)
 parser.add_argument('--video_format', type=str, default='.mp4')
 parser.add_argument('--clip_size', type=int, default=1800)
 parser.add_argument('--dir', type=str, default='data')
 parser.add_argument('--contains', type=str, default='')
-parser.add_argument('--quiet', type=bool, default=True)
+parser.add_argument('--quiet', type=str2bool, default=True)
 cfg = parser.parse_args()
 
 data_path = os.path.join(project_dir, cfg.dir)

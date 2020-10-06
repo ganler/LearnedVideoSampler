@@ -3,6 +3,9 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
+# video 623
+
+from itertools import combinations
 import sys
 import torch
 import os
@@ -15,15 +18,22 @@ import numpy as np
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
+from utility.improcessing import concat3channel2tensor, opticalflow2tensor
 from models.experimental import ImagePolicyNet
 from utility.imcliploader import CAPDataset
+from utility.common import str2bool
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--use_fixed_valdata', type=bool, default=True)
-parser.add_argument('--epoch', type=int, default=4)
-parser.add_argument('--pretrained_backbone', type=bool, default=False)
+# This means that training & evaluation data all come from `data` folder.
+parser.add_argument('--use_fixed_valdata', type=str2bool, default=True)
+parser.add_argument('--epoch', type=int, default=3)
+parser.add_argument('--fraction', type=float, default=1.0)
+parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] otherwise [concated image]')
+parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 cfg = parser.parse_args()
+print(cfg)
+cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
 
 if __name__ == "__main__":
     model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
@@ -37,17 +47,17 @@ if __name__ == "__main__":
     test = None
 
     if not cfg.use_fixed_valdata:
-        dataset = CAPDataset(os.path.join(project_dir, 'data'))
-        to_train = int(len(dataset) * 0.9)
+        dataset = CAPDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
+        to_train = int(round(len(dataset) * 0.9))
         train, test = torch.utils.data.random_split(dataset, [to_train, len(dataset) - to_train])
     else:
-        train = CAPDataset(os.path.join(project_dir, 'data'))
-        test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8)
+        train = CAPDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
+        test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), sample_rate=0.8, combinator=cfg.combinator)
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 
-    train_loader = DataLoader(dataset=train, batch_size=16, shuffle=True, num_workers=16)
-    test_loader = DataLoader(dataset=test, batch_size=16, shuffle=False, num_workers=16)
+    train_loader = DataLoader(dataset=train, batch_size=64, shuffle=True, num_workers=16)
+    test_loader = DataLoader(dataset=test, batch_size=64, shuffle=False, num_workers=16)
 
     loss_record = []
     precision_record = []

@@ -7,6 +7,7 @@ from utility.imcliploader import CASEvaluator
 from models.experimental import ImagePolicyNet
 import os
 import torch
+from utility.common import str2bool
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
@@ -15,7 +16,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--tag', type=str, default=None)
 parser.add_argument('--fetch_size', type=int, default=32)
-parser.add_argument('--pretrained_backbone', type=bool, default=False)
+parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 cfg = parser.parse_args()
 
 if __name__ == "__main__":

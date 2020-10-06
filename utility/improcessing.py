@@ -13,6 +13,14 @@ def opticalflow(l, r):
     flow = cv2.calcOpticalFlowFarneback(l, r, None, 0.5, 3, 15, 3, 5, 1.2, 0)
     return flow
 
+def concat3channel2tensor(l, r, batch_dim=False):
+    l = cv2.cvtColor(l, cv2.COLOR_BGR2GRAY)
+    r = cv2.cvtColor(r, cv2.COLOR_BGR2GRAY)
+    im = np.zeros((*l.shape[:2], 3))
+    im[:, :, 0] = l
+    im[:, :, 1] = r
+    return totensor(im, wh=l.shape[1::-1], batch_dim=batch_dim)
+
 def opticalflow2tensor(l, r, batch_dim=False):
     flow = opticalflow(l, r)
     im = np.zeros((*l.shape[:2], 3))
