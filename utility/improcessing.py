@@ -62,8 +62,6 @@ def boxlist2tensor(l, r, tensor_res=(608, 352), batch_dim=False):
     r = _boxlist2tensor(r, tensor_res)
     ret = torch.zeros(3, l.shape[0], l.shape[1])
 
-    print(l)
-
     ret[0] += l
     ret[1] += r
 
