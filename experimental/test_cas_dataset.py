@@ -18,7 +18,7 @@ import numpy as np
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
-from utility.improcessing import concat3channel2tensor, opticalflow2tensor
+from utility.improcessing import concat3channel2tensor, opticalflow2tensor, boxlist2tensor
 from models.experimental import ImagePolicyNet
 from utility.imcliploader import CAPDataset
 from utility.common import str2bool
@@ -29,11 +29,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--use_fixed_valdata', type=str2bool, default=True)
 parser.add_argument('--epoch', type=int, default=3)
 parser.add_argument('--fraction', type=float, default=1.0)
-parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] otherwise [concated image]')
+parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] [boxtensor] otherwise [concated image]')
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 cfg = parser.parse_args()
 print(cfg)
-cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
+if cfg.combinator == 'boxtensor':
+    cfg.combinator = boxlist2tensor
+else:
+    cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
 
 if __name__ == "__main__":
     model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
@@ -56,8 +59,8 @@ if __name__ == "__main__":
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 
-    train_loader = DataLoader(dataset=train, batch_size=64, shuffle=True, num_workers=16)
-    test_loader = DataLoader(dataset=test, batch_size=64, shuffle=False, num_workers=16)
+    train_loader = DataLoader(dataset=train, batch_size=32, shuffle=True, num_workers=64)
+    test_loader = DataLoader(dataset=test, batch_size=32, shuffle=False, num_workers=64)
 
     loss_record = []
     precision_record = []

@@ -31,9 +31,8 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) ->
             intxyxy = [int(element / factor) for element in xyxy]
             (x0, y0, x1, y1) = intxyxy
             tensor[0, y0:y1, x0:x1] += conf
-        # print(tensor.shape)
-        # cv2.imshow('', tensor[0])
     return torch.from_numpy(ret)
+
 
 class ImageEncoder(nn.Module, ABC):
     def __init__(self, n_out=64, frozen=True):

@@ -19,9 +19,10 @@ import random
 from typing import List, NamedTuple
 from collections import namedtuple
 from itertools import combinations
-from .improcessing import opticalflow2tensor, concat3channel2tensor
+from .improcessing import opticalflow2tensor, concat3channel2tensor, boxlist2tensor
 import cv2
 from tqdm import tqdm
+from prefetch_generator import BackgroundGenerator
 
 Entry = namedtuple('Entry', ('left', 'right', 'label'))
 
@@ -51,6 +52,7 @@ class CAPDataset(Dataset):
             raw_labels = np.load(os.path.join(folder, 'result.npy'), allow_pickle=True).item()
             max_skip = np.array(raw_labels['max_skip'], dtype=np.int32)
             car_count = raw_labels['car_count']
+            boxlists = raw_labels['boxlists']
             index = 0
             while index < len(max_skip):
                 end = index + max_skip[index]
@@ -89,22 +91,34 @@ class CAPDataset(Dataset):
                 neg = np.array(np.meshgrid(interior_range, border_outlier)).T.reshape(-1, 2)
 
                 for x in pos:
-                    l = os.path.join(folder, f'{x[0]}.jpg')
-                    r = os.path.join(folder, f'{x[1]}.jpg')
+                    if combinator is boxlist2tensor:
+                        l = boxlists[x[0]]
+                        r = boxlists[x[1]]
+                    else:
+                        l = os.path.join(folder, f'{x[0]}.jpg')
+                        r = os.path.join(folder, f'{x[1]}.jpg')
                     self.entries.append(Entry(l, r, 1))
 
                 for x in neg:
-                    l = os.path.join(folder, f'{x[0]}.jpg')
-                    r = os.path.join(folder, f'{x[1]}.jpg')
+                    if combinator is boxlist2tensor:
+                        l = boxlists[x[0]]
+                        r = boxlists[x[1]]
+                    else:
+                        l = os.path.join(folder, f'{x[0]}.jpg')
+                        r = os.path.join(folder, f'{x[1]}.jpg')
                     self.entries.append(Entry(l, r, 0)) # 0 => False
 
     def __len__(self) -> int:
         return len(self.entries)
+    
+    def __iter__(self):
+        return BackgroundGenerator(super().__iter__())
 
     def __getitem__(self, index: int):
         l, r, label = self.entries[index]
-        l = cv2.imread(l)
-        r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
+        if self.combinator is not boxlist2tensor:
+            l = cv2.imread(l)
+            r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
         return self.combinator(l, r), label
 
 ClipElement = namedtuple('ClipElement', ('path', 'max_size', 'labels'))
@@ -130,7 +144,7 @@ class CASEvaluator:
             predicted = np.ones(c.max_size) * -1 # -1 is a flag.
             
             def fetch_one(index):
-                return cv2.imread(os.path.join(c.path, f'{index}.jpg'))
+                return cv2.imread(os.path.join(c.path, f'{index}.jpg')) if self.combinator is not boxlist2tensor else 1 # TODO.
 
             def CAS(begin, end, skipped_size):
                 # [begin] [end]
