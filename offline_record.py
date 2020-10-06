@@ -27,12 +27,21 @@ Output:
 '''
 
 config = CarCounter.YOLOConfig()
-data_path = os.path.join(project_dir, 'data')
 
-IMSHOW = False
-VIDEO_FORMAT = '.mp4'
-AIM_CLIP_FRAMES = 900
 CLIP_FOLDER_SUFFIX = '__clip'
+
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--imshow', type=bool, default=False)
+parser.add_argument('--video_format', type=str, default='.mp4')
+parser.add_argument('--clip_size', type=int, default=1800)
+parser.add_argument('--dir', type=str, default='data')
+parser.add_argument('--contains', type=str, default='')
+parser.add_argument('--quiet', type=bool, default=True)
+cfg = parser.parse_args()
+
+data_path = os.path.join(project_dir, cfg.dir)
 
 if __name__ == '__main__':
     counter = CarCounter.CarCounter(config)  # DNN.
@@ -42,8 +51,9 @@ if __name__ == '__main__':
     output clip folder: 'xx_clip__${id}'
     '''
     processed_videos = [x.replace(CLIP_FOLDER_SUFFIX, '') for x in os.listdir(data_path) if CLIP_FOLDER_SUFFIX in x]
+    print(f'Found processed videos names: {processed_videos}')
     videos_to_process = [os.path.join(data_path, x) for x in os.listdir(data_path) if
-                         x.endswith(VIDEO_FORMAT) and x.split('.')[0] not in processed_videos]
+                         x.endswith(cfg.video_format) and x.split('.')[0] not in processed_videos and cfg.contains in x]
 
     for i, video in enumerate(videos_to_process):
         print(f'Video to be processed: #{i} ==> {video}')
@@ -53,11 +63,11 @@ if __name__ == '__main__':
 
         frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        clip_image_num = AIM_CLIP_FRAMES
+        clip_image_num = cfg.clip_size
         clip_num = frames // clip_image_num
 
         for clip_id in tqdm(range(clip_num)):
-            output_folder = f'{video.replace(VIDEO_FORMAT, CLIP_FOLDER_SUFFIX)}{clip_id}'
+            output_folder = f'{video.replace(cfg.video_format, CLIP_FOLDER_SUFFIX)}{clip_id}'
             output_folder = os.path.join(data_path, output_folder)
             os.mkdir(output_folder)
 
@@ -72,7 +82,7 @@ if __name__ == '__main__':
                 last_sample_start = 0
                 last_result = -1
 
-                for frame_id in range(clip_image_num):
+                for frame_id in tqdm(range(clip_image_num)):
                     ret, frame = cap.read()
                     if not ret:
                         print('ERROR: Got empty image in advance when decoding videos...')
@@ -83,7 +93,7 @@ if __name__ == '__main__':
 
                     inp = counter.process_image(frame)
                     pred = counter.predict(inp)
-                    if IMSHOW:
+                    if cfg.imshow:
                         counter.viz(pred, frame)
 
                     car_count = len(pred[0])
@@ -93,7 +103,8 @@ if __name__ == '__main__':
                         skip = frame_id - last_sample_start
                         if skip > max_skip:
                             max_skip = skip
-                            print(f'MAX SKIP in {video}:clip:{clip_id} updated to => {max_skip}')
+                            if not cfg.quiet:
+                                print(f'MAX SKIP in {video}:clip:{clip_id} updated to => {max_skip}')
                         if frame_id == clip_image_num - 1:
                             clip_data['max_skip'][np.arange(last_sample_start, frame_id + 1)] += 1
                         last_sample_start = frame_id
@@ -105,7 +116,8 @@ if __name__ == '__main__':
                 with open(f'{os.path.join(output_folder, "result")}.npy', 'wb') as f:
                     np.save(f, clip_data)
                     assert len(clip_data['boxlists']) == clip_image_num
-                    print(f'VIDEO NAME => {video} :: Result written to => {f}')
+                    if not cfg.quiet:
+                        print(f'VIDEO NAME => {video} :: Result written to => {f}')
 
             except Exception as e:
                 print(f'Failed to process all data aimed to be in {output_folder}')
@@ -113,5 +125,5 @@ if __name__ == '__main__':
                 raise e
 
         cap.release()
-    if IMSHOW:
+    if cfg.imshow:
         cv2.destroyAllWindows()
