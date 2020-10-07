@@ -6,6 +6,6 @@ __pycache__
 val_data*
 trained
 log*.txt
-results/
+result/
 
 !application/carcounter/data
