@@ -15,7 +15,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--tag', type=str, default=None)
-parser.add_argument('--fetch_size', type=int, default=32)
+parser.add_argument('--fetch_size', type=int, default=64)
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 cfg = parser.parse_args()
 

@@ -7,6 +7,7 @@ sys.path.append(project_dir)
 from models.backbone import SamplerBackbone, boxlist2tensor
 from models.experimental import ImagePolicyNet
 from application.carcounter import CarCounter
+from utility.improcessing import _boxlist2tensor
 import torch
 
 import argparse
@@ -47,6 +48,7 @@ if __name__ == '__main__':
     counter.predict(inp)  # Cold start
     pred = timed(lambda: counter.predict(inp), f'YOLOv3 Inference @ {inp.shape[2:]}\t')  # Bounding box list.
     after_box2list = timed(lambda: boxlist2tensor(pred, config.resolution).cuda(), 'BoxList Encoding\t\t\t\t')
+
     if imshow:
         vized = counter.viz(pred, raw_image, imshow=False)
         cv2.imwrite('example.png', vized)

@@ -119,7 +119,13 @@ class CAPDataset(Dataset):
         if self.combinator is not boxlist2tensor:
             l = cv2.imread(l)
             r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
-        return self.combinator(l, r), label
+        x = self.combinator(l, r)
+        # if x.sum() > 0:
+        #     from .improcessing import _boxlist2tensor
+        #     print(torch.nonzero(_boxlist2tensor(l), as_tuple=True))
+        #     raise Exception('...')
+
+        return x, label
 
 ClipElement = namedtuple('ClipElement', ('path', 'max_size', 'labels'))
 

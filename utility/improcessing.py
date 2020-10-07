@@ -42,7 +42,7 @@ def totensor(im, wh, batch_dim=False):
     return inp
 
 @torch.no_grad()
-def _boxlist2tensor(boxlist: torch.Tensor, tensor_resolution, factor=2) -> torch.Tensor:
+def _boxlist2tensor(boxlist: torch.Tensor, tensor_resolution=(608, 352), factor=2, use_conf=False) -> torch.Tensor:
     # Input : List[[BoxIndex, X, Y, W, H, CONF]]
     # Output: [SequenceIndex, 1, TensorHeight, TensorWidth]
     ret = np.zeros((tensor_resolution[1] // factor, tensor_resolution[0] // factor))
@@ -51,7 +51,7 @@ def _boxlist2tensor(boxlist: torch.Tensor, tensor_resolution, factor=2) -> torch
         for (*xyxy, conf) in boxlist:
             intxyxy = [int(element / factor) for element in xyxy]
             (x0, y0, x1, y1) = intxyxy
-            ret[y0:y1, x0:x1] += conf
+            ret[y0:(y1+1), x0:(x1+1)] += conf if use_conf else 1.
     return torch.from_numpy(ret)
 
 

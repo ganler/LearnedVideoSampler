@@ -5,6 +5,7 @@ __pycache__
 .vscode
 val_data*
 trained
-log*
+log*.txt
+results/
 
 !application/carcounter/data
