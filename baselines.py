@@ -73,8 +73,8 @@ if __name__ == '__main__':
             f'Random skipping: skipped_frames: {skip_accum} / {len(test_data)} = {ratio * 100:.3f}%, MAE: {MAE:.3f}')
     
     tag = f'fixed_skipping@{cfg.fixed_skipping}' if cfg.fixed_skipping is not None else f'random_skip@{cfg.action_space}'
-    np.save(os.path.join(project_dir, 'result', f'{tag}.skip_ratio.npy'), skip_ratio)
-    np.save(os.path.join(project_dir, 'result', f'{tag}.mae_list.npy'), mae_list)
+    np.save(os.path.join(project_dir, 'result', f'mae-{cfg.mae}-{tag}.skip_ratio.npy'), skip_ratio)
+    np.save(os.path.join(project_dir, 'result', f'mae-{cfg.mae}-{tag}.mae_list.npy'), mae_list)
 
     print(skip_ratio, mae_list)
     print(f'AVG Skipping Ratio: {np.array(skip_ratio).mean()}')
