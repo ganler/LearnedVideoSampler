@@ -7,5 +7,6 @@ val_data*
 trained
 log*.txt
 result/
+nohup*
 
 !application/carcounter/data

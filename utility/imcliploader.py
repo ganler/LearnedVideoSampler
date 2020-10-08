@@ -17,9 +17,10 @@ import numpy as np
 from torch.utils.data import Dataset
 import os
 import random
-from typing import List, NamedTuple
+from typing import List
 from collections import namedtuple
 from itertools import combinations
+from threading import Lock
 from .improcessing import *
 from .common import *
 import cv2
@@ -28,6 +29,7 @@ from tqdm import tqdm
 from prefetch_generator import BackgroundGenerator
 
 Entry = namedtuple('Entry', ('left', 'right', 'label'))
+FrameDescription = namedtuple('FrameDescription', ('cap_lock', 'index', 'resolution'))
 
 
 '''
@@ -45,6 +47,7 @@ class CAPDataset(Dataset):
     def __init__(self, clip_home, outlier_size=30, fraction=1.0, sample_rate=0.25, combinator=opticalflow2tensor):
         self.entries: List[Entry] = []
         self.combinator = combinator
+        self.video_cap_pool = dict()
 
         # Create TemporalSets.
         folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x))]
@@ -52,10 +55,18 @@ class CAPDataset(Dataset):
         print('Loading data...')
         for folder in tqdm(folderlist):
             folder = os.path.join(clip_home, folder)
-            raw_labels = np.load(os.path.join(folder, 'result.npy'), allow_pickle=True).item()
-            max_skip = np.array(raw_labels['max_skip'], dtype=np.int32)
-            car_count = raw_labels['car_count']
-            boxlists = raw_labels['boxlists']
+            raw_data = np.load(os.path.join(folder, 'result.npy'), allow_pickle=True).item()
+            max_skip = np.array(raw_data['max_skip'], dtype=np.int32)
+            car_count = raw_data['car_count']
+            boxlists = raw_data['boxlists']
+
+            frame_idx = raw_data['frame_ids']
+            reso = raw_data['resolution']
+            src_path = raw_data['src_path']
+
+            if src_path not in self.video_cap_pool.keys():
+                self.video_cap_pool[src_path] = (cv2.VideoCapture(src_path), Lock())
+
             index = 0
             while index < len(max_skip):
                 end = index + max_skip[index]
@@ -98,8 +109,9 @@ class CAPDataset(Dataset):
                         l = boxlists[x[0]]
                         r = boxlists[x[1]]
                     else:
-                        l = os.path.join(folder, f'{x[0]}.jpg')
-                        r = os.path.join(folder, f'{x[1]}.jpg')
+                        # (Video, Index)
+                        l = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[0]], reso)
+                        r = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[1]], reso)
                     self.entries.append(Entry(l, r, 1))
 
                 for x in neg:
@@ -107,8 +119,8 @@ class CAPDataset(Dataset):
                         l = boxlists[x[0]]
                         r = boxlists[x[1]]
                     else:
-                        l = os.path.join(folder, f'{x[0]}.jpg')
-                        r = os.path.join(folder, f'{x[1]}.jpg')
+                        l = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[0]], reso)
+                        r = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[1]], reso)
                     self.entries.append(Entry(l, r, 0)) # 0 => False
 
     def __len__(self) -> int:
@@ -120,8 +132,21 @@ class CAPDataset(Dataset):
     def __getitem__(self, index: int):
         l, r, label = self.entries[index]
         if self.combinator is not boxlist2tensor:
-            l = cv2.imread(l)
-            r = cv2.imread(r)  # NOTE: OpenCV mat's shape means: Height, Width, Channel.
+            lock: Lock = l.cap_lock[1]
+            cap: cv2.VideoCapture = l.cap_lock[0]
+            lock.acquire()
+            
+            assert cap.set(cv2.CAP_PROP_POS_FRAMES, l.index)
+            success, frame = cap.read()
+            assert success
+            l = cv2.resize(frame, l.resolution)
+            
+            assert cap.set(cv2.CAP_PROP_POS_FRAMES, r.index)
+            success, frame = cap.read()
+            assert success
+            r = cv2.resize(frame, r.resolution)
+
+            lock.release()
         x = self.combinator(l, r)
         # if x.sum() > 0:
         #     from .improcessing import _boxlist2tensor
@@ -137,6 +162,7 @@ class CASEvaluator:
     def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, mae=0.5):
         self.clips: List[ClipElement] = []
         self.fetch_size = fetch_size
+        self.video_cap_pool = dict()
         self.combinator = combinator
         self.mae=mae
         for f in os.listdir(folder):
@@ -145,10 +171,13 @@ class CASEvaluator:
                 raw_data = np.load(os.path.join(path, 'result.npy'), allow_pickle=True).item()
                 labels = raw_data['car_count']
                 max_size = len(labels)
+                if raw_data['src_path'] not in self.video_cap_pool.keys():
+                    self.video_cap_pool[raw_data['src_path']] = cv2.VideoCapture(raw_data['src_path'])
                 if self.combinator == boxlist2tensor or type(self.combinator) is iou_pairing_skipper:
                     self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
                 else:
-                    self.clips.append(ClipElement(data=path, max_size=max_size, labels=labels))
+                    self.clips.append(
+                        ClipElement(data=(raw_data['src_path'], raw_data['frame_ids'], raw_data['resolution']), max_size=max_size, labels=labels))
 
     def evaluate(self, model, mae_bound=None):
         ret_mae = []
@@ -161,7 +190,11 @@ class CASEvaluator:
             def fetch_one(index):
                 if self.combinator == boxlist2tensor or type(self.combinator) is iou_pairing_skipper:
                     return c.data[index]
-                return cv2.imread(os.path.join(c.data, f'{index}.jpg'))
+                cap: cv2.VideoCapture = self.video_cap_pool[c.data[0]]
+                assert cap.set(cv2.CAP_PROP_POS_FRAMES, c.data[1][index])
+                success, frame = cap.read()
+                assert success
+                return cv2.resize(frame, c.data[2])
 
             def CAS(begin, end, skipped_size, cur_errors):
                 # [begin] [end]

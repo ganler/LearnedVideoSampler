@@ -81,7 +81,10 @@ if __name__ == '__main__':
                 clip_data = {
                     'car_count': np.zeros(clip_image_num),
                     'max_skip': np.zeros(clip_image_num),
-                    'boxlists': []
+                    'frame_ids': np.arange(clip_id * clip_image_num, (1 + clip_id) * clip_image_num),
+                    'boxlists': [],
+                    'resolution': config.resolution,
+                    'src_path': video
                 }
 
                 max_skip = 0
@@ -95,7 +98,6 @@ if __name__ == '__main__':
                         exit(-1)
 
                     frame = cv2.resize(frame, dsize=config.resolution)
-                    cv2.imwrite(os.path.join(output_folder, f'{frame_id}.jpg'), frame)
 
                     inp = counter.process_image(frame)
                     pred = counter.predict(inp)
