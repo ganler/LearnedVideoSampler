@@ -165,7 +165,9 @@ class CASEvaluator:
         self.video_cap_pool = dict()
         self.combinator = combinator
         self.mae=mae
-        for f in os.listdir(folder):
+        item_list = os.listdir(folder)
+        assert len(item_list) > 0
+        for f in item_list:
             if os.path.isdir(os.path.join(folder, f)):
                 path = os.path.join(folder, f)
                 raw_data = np.load(os.path.join(path, 'result.npy'), allow_pickle=True).item()
