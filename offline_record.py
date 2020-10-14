@@ -23,17 +23,6 @@ import argparse
 import cv2
 import numpy as np
 
-'''
-Usage:  Convert videos into datasets.
-Input:  Video List(in `data/*.mp4`)
-Output: 
-    - Folders with images[name=$(ID).jpg] where each of them represents a video clip.
-    - In each clip folder, we have a 'result.npy' which is a dict containing results:
-        > dict['car_count']: car count results by YOLO.
-        > dict['max_skip']: maximum skip size of current image.
-        > dict['boxlists']: bounding box data.
-'''
-
 config = CarCounter.YOLOConfig()
 
 CLIP_FOLDER_SUFFIX = '__clip'

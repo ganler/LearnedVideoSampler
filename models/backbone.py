@@ -33,6 +33,15 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) ->
             tensor[0, y0:y1, x0:x1] += conf
     return torch.from_numpy(ret)
 
+def CASNet(n_inp, n_out=2):
+    return nn.Sequential(
+            nn.Linear(n_inp, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 64),
+            nn.LeakyReLU(),
+            nn.Linear(64, n_out),
+            nn.Softmax(dim=1)
+        )
 
 class ImageEncoder(nn.Module, ABC):
     def __init__(self, n_out=64, frozen=True):

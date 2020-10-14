@@ -159,7 +159,7 @@ ClipElement = namedtuple('ClipElement', ('data', 'max_size', 'labels'))
 
 
 class CASEvaluator:
-    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, mae=0.5):
+    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, mae=1e10):
         self.clips: List[ClipElement] = []
         self.fetch_size = fetch_size
         self.video_cap_pool = dict()
@@ -167,7 +167,7 @@ class CASEvaluator:
         self.mae=mae
         item_list = os.listdir(folder)
         assert len(item_list) > 0
-        for f in item_list:
+        for f in tqdm(item_list):
             if os.path.isdir(os.path.join(folder, f)):
                 path = os.path.join(folder, f)
                 raw_data = np.load(os.path.join(path, 'result.npy'), allow_pickle=True).item()
@@ -181,7 +181,7 @@ class CASEvaluator:
                     self.clips.append(
                         ClipElement(data=(raw_data['src_path'], raw_data['frame_ids'], raw_data['resolution']), max_size=max_size, labels=labels))
 
-    def evaluate(self, model, mae_bound=None):
+    def evaluate(self, model, mae_bound=None, train_hook=None):
         ret_mae = []
         ret_skip = []
         for cc in tqdm(self.clips):
@@ -244,10 +244,25 @@ class CASEvaluator:
             skipped_size = np.array([0])
             cur_errors = np.array([0]) 
 
+            if train_hook is not None:
+                train_hook.total = len(self.clips)
+
+            last_skip = 0
             while end_ != c.max_size:
+                if train_hook is not None: # update ... 
+                    # Training: Input Prev Segments...
+                    if train_hook.is_train:
+                        train_hook.train(c.labels, predicted, begin_, skipped_size[0] - last_skip)
+                    else:
+                        train_hook.adaptation_inference(c.labels, predicted, begin_)
                 end_ = min(begin_ + self.fetch_size, c.max_size)
                 CAS(begin_, end_, skipped_size, cur_errors)
                 begin_ = end_
+                last_skip = skipped_size[0]
+
+            if train_hook is not None:
+                train_hook.processed += 1
+                train_hook.reset_for_next_clip()
 
             bugs = (predicted < 0).nonzero()[0]
             if len(bugs) != 0:
