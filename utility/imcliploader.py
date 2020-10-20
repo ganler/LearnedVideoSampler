@@ -159,12 +159,11 @@ ClipElement = namedtuple('ClipElement', ('data', 'max_size', 'labels'))
 
 
 class CASEvaluator:
-    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, mae=1e10):
+    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor):
         self.clips: List[ClipElement] = []
         self.fetch_size = fetch_size
         self.video_cap_pool = dict()
         self.combinator = combinator
-        self.mae=mae
         item_list = os.listdir(folder)
         assert len(item_list) > 0
         for f in tqdm(item_list):
@@ -187,7 +186,6 @@ class CASEvaluator:
         for cc in tqdm(self.clips):
             c = cc
             predicted = np.ones(c.max_size) * -1 # -1 is a flag.
-            max_tolerant_errors = int(round(self.mae * c.max_size))
 
             def fetch_one(index):
                 if self.combinator == boxlist2tensor or type(self.combinator) is iou_pairing_skipper:
@@ -217,9 +215,7 @@ class CASEvaluator:
                     predicted[end - 1] = rc
                     if lc == rc:
                         skip_or_not = None
-                        if cur_errors[0] >= max_tolerant_errors:
-                            skip_or_not = False
-                        elif type(self.combinator) is iou_pairing_skipper:
+                        if type(self.combinator) is iou_pairing_skipper:
                             skip_or_not = self.combinator.judge(fetch_one(begin), fetch_one(end - 1))
                         else:
                             skip_or_not = torch.max(

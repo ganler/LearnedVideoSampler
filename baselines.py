@@ -23,7 +23,6 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--action_space', type=int, default=64)
 parser.add_argument('--fixed_skipping', type=int, default=None)
-parser.add_argument('--mae', type=float, default=0.5)
 parser.add_argument('--dir', type=str, default='val_data_non_general')
 cfg = parser.parse_args()
 
@@ -47,20 +46,12 @@ if __name__ == '__main__':
         test_data.reset()
 
         # MAE = \sum Abs Error / test_data.total_samples_number
-        max_tolerant_miss_counts = int(round(test_data.total_samples_number * cfg.mae))
         current_miss_counts = 0
         skip_accum = 0
 
         for (image, boxlists), (car_cnt, max_skip) in test_data:
-            predicted = None
-            miss_counts = None
-            if current_miss_counts < max_tolerant_miss_counts:
-                predicted = RATE_OPTIONS[random.randint(0, len(RATE_OPTIONS)-1)] if cfg.fixed_skipping is None else cfg.fixed_skipping
-                miss_counts, _ = test_data.skip_and_evaluate(predicted)
-            else:
-                predicted = 0
-                miss_counts, _ = test_data.skip_and_evaluate(predicted)
-                assert miss_counts.sum() == 0
+            predicted = RATE_OPTIONS[random.randint(0, len(RATE_OPTIONS)-1)] if cfg.fixed_skipping is None else cfg.fixed_skipping
+            miss_counts, _ = test_data.skip_and_evaluate(predicted)
             
             skip_accum += predicted
             current_miss_counts += miss_counts.sum()
@@ -73,9 +64,10 @@ if __name__ == '__main__':
             f'Random skipping: skipped_frames: {skip_accum} / {len(test_data)} = {ratio * 100:.3f}%, MAE: {MAE:.3f}')
     
     tag = f'fixed_skipping@{cfg.fixed_skipping}' if cfg.fixed_skipping is not None else f'random_skip@{cfg.action_space}'
-    np.save(os.path.join(project_dir, 'result', f'mae-{cfg.mae}-{tag}.skip_ratio.npy'), skip_ratio)
-    np.save(os.path.join(project_dir, 'result', f'mae-{cfg.mae}-{tag}.mae_list.npy'), mae_list)
+    np.save(os.path.join(project_dir, 'result', f'{tag}.skip_ratio.npy'), skip_ratio)
+    np.save(os.path.join(project_dir, 'result', f'{tag}.mae_list.npy'), mae_list)
 
-    print(skip_ratio, mae_list)
+    print(skip_ratio)
+    print(mae_list)
     print(f'AVG Skipping Ratio: {np.array(skip_ratio).mean()}')
     print(f'AVG MAE : {np.array(mae_list).mean()}')

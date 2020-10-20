@@ -19,7 +19,6 @@ parser.add_argument('--tag', type=str, default=None)
 parser.add_argument('--fetch_size', type=int, default=64)
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 parser.add_argument('--iou_pairing', type=float, default=None)
-parser.add_argument('--mae', type=float, default=0.5)
 parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] [boxtensor] otherwise [concated image]')
 cfg = parser.parse_args()
 print(cfg)
@@ -32,7 +31,6 @@ else:
 
 if __name__ == "__main__":
     evaluator = CASEvaluator(
-        mae=cfg.mae,
         folder=os.path.join(project_dir, 'val_data_non_general'), 
         fetch_size=cfg.fetch_size, 
         combinator=cfg.combinator)
@@ -54,7 +52,7 @@ if __name__ == "__main__":
 
     mltag = f'ML-{cfg.tag}'
     nonmltag = f'iou_pairing-tresh-{cfg.iou_pairing}'
-    tag = f'cas@{mltag if cfg.iou_pairing is None else nonmltag}-mae-{cfg.mae}'
+    tag = f'cas@{mltag if cfg.iou_pairing is None else nonmltag}'
     np.save(os.path.join(project_dir, 'result', f'{tag}.skip_ratio.npy'), skip_ratio)
     np.save(os.path.join(project_dir, 'result', f'{tag}.mae_list.npy'), mae_list)
 
