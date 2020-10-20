@@ -3,7 +3,7 @@ from abc import ABC
 import numpy as np
 import torch
 from torch import nn
-from torchvision.models import mobilenet_v2, resnet18, vgg11, mnasnet1_3
+from torchvision.models import resnet18
 from typing import List
 import torch.nn.functional as F
 import cv2
@@ -33,6 +33,7 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) ->
             tensor[0, y0:y1, x0:x1] += conf
     return torch.from_numpy(ret)
 
+
 def CASNet(n_inp, n_out=2):
     return nn.Sequential(
             nn.Linear(n_inp, 128),
@@ -43,68 +44,64 @@ def CASNet(n_inp, n_out=2):
             nn.Softmax(dim=1)
         )
 
-class ImageEncoder(nn.Module, ABC):
-    def __init__(self, n_out=64, frozen=True):
-        super(ImageEncoder, self).__init__()
-        self.backbone = resnet18(pretrained=True)
+
+class ImagePolicyNet(nn.Module, ABC):
+    def __init__(self, n_opt, frozen=False, pretrained=False):
+        super(ImagePolicyNet, self).__init__()
+        self.backbone = resnet18(pretrained=pretrained)
+        self.backbone.fc = nn.Linear(512, n_opt)
 
         if frozen:
             self.backbone.requires_grad_(False)
+            self.backbone.fc.requires_grad_(True)
             self.backbone.eval()
-
-        self.embedding = nn.Linear(1000, n_out)
+            self.backbone.fc.train()
 
     def forward(self, x):
-        return self.embedding(self.backbone(x))
+        return self.backbone(x)
 
 
-class BBoxListEncoder(nn.Module, ABC):
-    def __init__(self, n_hidden=64, n_out=64):
-        super(BBoxListEncoder, self).__init__()
+class SeriesLinearPolicyNet(nn.Module, ABC):
+    def __init__(self, n_inp, n_opt):
+        super(SeriesLinearPolicyNet, self).__init__()
+        self.fc = nn.Linear(n_inp, n_opt)
 
-        self.bottleneck = nn.Sequential(
-            nn.Conv2d(1, 4, 5),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(4, 4, 5),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(4, 8, 3),
-            nn.LeakyReLU(inplace=True)
+    def forward(self, x):
+        return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
+
+
+class SeriesUnlinearPolicyNet(nn.Module, ABC):
+    def __init__(self, n_inp, n_opt):
+        super(SeriesUnlinearPolicyNet, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(n_inp, n_inp),
+            nn.LeakyReLU(),
+            nn.Linear(n_inp, n_inp // 2),
+            nn.LeakyReLU(),
+            nn.Linear(n_inp // 2, n_opt)
         )
-        self.rnn = nn.LSTM(8, n_hidden, bidirectional=True, batch_first=True)
-        self.embedding = nn.Sequential(
-            nn.Linear(n_hidden * 2, n_out)
+
+    def forward(self, x):
+        # Input Format: [Batch, Data]
+        return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
+
+
+class SimpleBoxMaskCNN(torch.nn.Module, ABC):
+    def __init__(self, n_option, n_stack):
+        super(SimpleBoxMaskCNN, self).__init__()
+        internal = max(1, n_stack // 2)
+        self.convs = nn.Sequential(
+            nn.Conv2d(n_stack, internal, 5, stride=3),
+            nn.LeakyReLU(),
+            nn.Conv2d(internal, 3, 5),
+            nn.LeakyReLU()
+        )
+        self.fc = nn.Sequential(
+            nn.Linear(3312, 128),
+            nn.Linear(128, n_option),
         )
 
-    def forward(self, x: torch.Tensor):
-        # [BatchDim, SequenceDim, 1, W, H]
-
-        has_batch = len(x.shape) == 5
-        if has_batch:
-            N, S, C, H, W = x.shape
-            x = x.view(-1, C, H, W)
-        x = self.bottleneck(x)
-        # [BatchDim, SequenceDim, 64, ?, ?]
-        x = F.adaptive_avg_pool2d(x, (1, 1)).flatten(1)
-        if has_batch:
-            x = x.view(N, S, -1)
-        else:
-            x = x.unsqueeze(0)
-        # [BatchDim, SequenceDim, 64]
-        x, _ = self.rnn(x)
-        return self.embedding(x[:, -1, :])
-
-
-class SamplerBackbone(torch.nn.Module, ABC):
-    def __init__(self, n_option, n_hidden=256, n_embed=64):
-        super(SamplerBackbone, self).__init__()
-        self.image_encoder = ImageEncoder(n_embed)
-        self.box_encoder = BBoxListEncoder(n_hidden=n_hidden, n_out=n_embed)
-        self.post = nn.Linear(n_embed, n_option)
-
-    def forward(self, im, boxes):
-        left = self.image_encoder(im)
-        right = self.box_encoder(boxes)
-
-        x = left + right
-        x = self.post(x)
+    def forward(self, x):
+        x = self.convs(x)
+        x = self.fc(x.view(x.shape[0], -1))
         return nn.functional.log_softmax(x, dim=1)

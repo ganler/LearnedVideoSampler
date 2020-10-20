@@ -19,7 +19,7 @@ project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
 from utility.improcessing import concat3channel2tensor, opticalflow2tensor, boxlist2tensor
-from models.experimental import ImagePolicyNet
+from models.backbone import ImagePolicyNet
 from utility.imcliploader import CAPDataset
 from utility.common import str2bool
 import argparse
@@ -72,6 +72,7 @@ if __name__ == "__main__":
             loss = loss_func(out, torch.LongTensor(y).cuda())
             loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
 
             # print statistics
             running_loss += loss.item()

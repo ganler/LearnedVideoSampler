@@ -4,8 +4,7 @@ import sys
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
-from models.backbone import SamplerBackbone, boxlist2tensor
-from models.experimental import ImagePolicyNet
+from models.backbone import SamplerBackbone, boxlist2tensor, ImagePolicyNet
 from application.carcounter import CarCounter
 from utility.improcessing import _boxlist2tensor
 import torch

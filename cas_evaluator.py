@@ -4,7 +4,7 @@
 # https://opensource.org/licenses/MIT
 
 from utility.imcliploader import CASEvaluator
-from models.experimental import ImagePolicyNet
+from models.backbone import ImagePolicyNet
 import os
 import torch
 from utility.common import *

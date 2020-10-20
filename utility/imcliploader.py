@@ -22,6 +22,7 @@ from collections import namedtuple
 from itertools import combinations
 from threading import Lock
 from .improcessing import *
+from .improcessing import _boxlist2tensor_channelstack
 from .common import *
 import cv2
 from tqdm import tqdm
@@ -42,6 +43,48 @@ TODO enhancements:
 0: Soft label.
 '''
 
+
+class P2FDataset(Dataset):
+    def __init__(self, clip_home, options, fraction=1.0, prev_n=8, factor=4):
+        self.options = options
+        self.max_skip_collection = []
+        self.bbox_collection = []
+        self.prev_n = prev_n
+        self.factor = factor
+        self.aligned_num = None
+
+        # Create TemporalSets.
+        folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x))]
+        folderlist = folderlist[:int(round(len(folderlist) * fraction))]
+        print('Loading data...')
+
+        for folder in tqdm(folderlist):
+            folder = os.path.join(clip_home, folder)
+            raw_data = np.load(os.path.join(folder, 'result.npy'), allow_pickle=True).item()
+            max_skip = np.array(raw_data['max_skip'], dtype=np.int32) - 1
+            boxlists = raw_data['boxlists']
+
+            self.max_skip_collection.append(max_skip)
+            self.bbox_collection.append(boxlists)
+
+            if self.aligned_num is None:
+                self.aligned_num = len(boxlists) - (prev_n - 1)
+            assert len(boxlists) - (prev_n - 1) == self.aligned_num
+
+    def __len__(self) -> int:
+        return self.aligned_num * len(self.max_skip_collection)
+    
+    def __iter__(self):
+        return BackgroundGenerator(super().__iter__())
+
+    def __getitem__(self, index: int):
+        clip_index = index // self.aligned_num
+        f_index = index - clip_index * self.aligned_num
+        boxlists = self.bbox_collection[clip_index][f_index:(f_index+self.prev_n)]
+        skip = int(self.max_skip_collection[clip_index][f_index+self.prev_n-1])
+        ans = np.nonzero(skip - np.array(self.options, dtype=np.int32) >= 0)[0][-1]
+        return _boxlist2tensor_channelstack(boxlists, factor=self.factor), ans
+            
 
 class CAPDataset(Dataset):
     def __init__(self, clip_home, outlier_size=30, fraction=1.0, sample_rate=0.25, combinator=opticalflow2tensor):
