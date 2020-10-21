@@ -4,7 +4,7 @@
 # https://opensource.org/licenses/MIT
 
 from utility.imcliploader import CASEvaluator
-from models.backbone import ImagePolicyNet
+from models.backbone import ImagePolicyNet, BoxNN
 import os
 import torch
 from utility.common import *
@@ -26,6 +26,8 @@ if cfg.iou_pairing is not None:
     cfg.combinator = iou_pairing_skipper(conf_thresh=cfg.iou_pairing)
 elif cfg.combinator == 'boxtensor':
     cfg.combinator = boxlist2tensor
+elif cfg.combinator == 'embedding':
+    cfg.combinator = boxembeddingpair
 else:
     cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
 
@@ -38,7 +40,8 @@ if __name__ == "__main__":
     model = None
     if cfg.iou_pairing is None:
         torch.manual_seed(1999)
-        model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
+        model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda() if cfg.combinator != boxembeddingpair else BoxNN(n_prev=2, n_option=2, top_n=16)
+        model = model.cuda()
         if cfg.tag is not None:
             resdir = os.path.join(project_dir, 'trained')
             res = os.path.join(project_dir, 'trained', cfg.tag)

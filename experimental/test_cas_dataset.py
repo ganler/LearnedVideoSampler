@@ -18,8 +18,8 @@ import numpy as np
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
-from utility.improcessing import concat3channel2tensor, opticalflow2tensor, boxlist2tensor
-from models.backbone import ImagePolicyNet
+from utility.improcessing import *
+from models.backbone import ImagePolicyNet, BoxNN
 from utility.imcliploader import CAPDataset
 from utility.common import str2bool
 import argparse
@@ -27,7 +27,7 @@ import argparse
 parser = argparse.ArgumentParser()
 # This means that training & evaluation data all come from `data` folder.
 parser.add_argument('--use_fixed_valdata', type=str2bool, default=True)
-parser.add_argument('--epoch', type=int, default=3)
+parser.add_argument('--epoch', type=int, default=2)
 parser.add_argument('--fraction', type=float, default=1.0)
 parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] [boxtensor] otherwise [concated image]')
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
@@ -35,12 +35,17 @@ cfg = parser.parse_args()
 print(cfg)
 if cfg.combinator == 'boxtensor':
     cfg.combinator = boxlist2tensor
+elif cfg.combinator == 'embedding':
+    cfg.combinator = boxembeddingpair
 else:
     cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
 
 if __name__ == "__main__":
-    model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
-    best_model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone)
+    model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone) if cfg.combinator != boxembeddingpair else BoxNN(n_prev=2, n_option=2, top_n=16)
+    best_model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone) if cfg.combinator != boxembeddingpair else BoxNN(n_prev=2, n_option=2, top_n=16)
+    
+    model = model.cuda()
+    best_model = best_model.cuda()
 
     loss_func = nn.CrossEntropyLoss()
     optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3)

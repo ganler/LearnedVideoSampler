@@ -12,9 +12,8 @@ class VideoSamplerDataset:
     ptr = None
     last_ptr = None
 
-    def __init__(self, dirlist, cross_video=False, use_image=True, n_box=5, discount=0.95):
+    def __init__(self, dirlist, cross_video=False, use_image=True, discount=0.95):
         self.dirlist = dirlist
-        self.n_box = n_box
         self.cross_video = cross_video
         self.data_list = []
         self.use_image = use_image
@@ -66,9 +65,7 @@ class VideoSamplerDataset:
 
         car_count = self.data_list[this_index]['car_count'][this_frame_index]
         max_skip = self.data_list[this_index]['max_skip'][this_frame_index]
-        real_boxes = self.data_list[this_index]['boxlists'][max(0, this_frame_index - self.n_box):this_frame_index]
-        box_lists = [torch.Tensor([])] * (self.n_box - len(real_boxes)) + real_boxes
-
+        box_lists = self.data_list[this_index]['boxlists'][this_frame_index]
         if self.use_image:
             return (frame, box_lists), (car_count, max_skip)
         else:
@@ -99,7 +96,7 @@ class VideoSamplerDataset:
         return self.__next__()
 
 
-def create_train_test_datasets(folder, episode_mode=False, use_image=True, train_proportion=0.6, n_box=5):
+def create_train_test_datasets(folder, episode_mode=False, use_image=True, train_proportion=0.6):
     assert train_proportion <= 1
     dirlist = [os.path.join(folder, x) for x in os.listdir(folder) if os.path.isdir(os.path.join(folder, x))]
     random.seed(0)
@@ -109,5 +106,5 @@ def create_train_test_datasets(folder, episode_mode=False, use_image=True, train
 
     print(f'===> Got {len(train_pairs)} training clips, and {len(test_pairs)} test clips.')
     return \
-        VideoSamplerDataset(train_pairs, cross_video=(not episode_mode), n_box=n_box, use_image=use_image), \
-        VideoSamplerDataset(test_pairs, n_box=n_box, use_image=use_image)
+        VideoSamplerDataset(train_pairs, cross_video=(not episode_mode), use_image=use_image), \
+        VideoSamplerDataset(test_pairs, use_image=use_image)

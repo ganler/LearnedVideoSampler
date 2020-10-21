@@ -14,7 +14,7 @@ project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
 from application.carcounter.CarCounter import YOLOConfig, preprocess_image
-from models.backbone import SimpleBoxMaskCNN
+from models.backbone import SimpleBoxMaskCNN, BoxNN
 from utility.imcliploader import P2FDataset
 from utility.common import *
 
@@ -30,23 +30,28 @@ parser.add_argument('--epoch', type=int, default=2)
 parser.add_argument('--n_prev', type=int, default=8)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--fraction', type=float, default=1.0)
+parser.add_argument('--method', type=str, default='embedding')
 cfg = parser.parse_args()
 print(cfg)
 
 if __name__ == '__main__':
-    model = SimpleBoxMaskCNN(n_option=len(RATE_OPTIONS), n_stack=cfg.n_prev).cuda()
-    best_model = SimpleBoxMaskCNN(n_option=len(RATE_OPTIONS), n_stack=cfg.n_prev).cuda()
+    model = SimpleBoxMaskCNN(n_option=len(RATE_OPTIONS), n_stack=cfg.n_prev) if cfg.method == 'mask' else BoxNN(n_prev=cfg.n_prev, n_option=len(RATE_OPTIONS), top_n=16)
+    best_model = SimpleBoxMaskCNN(n_option=len(RATE_OPTIONS), n_stack=cfg.n_prev) if cfg.method == 'mask' else BoxNN(n_prev=cfg.n_prev, n_option=len(RATE_OPTIONS), top_n=16)
+
+    model = model.cuda()
+    best_model = best_model.cuda()
+
     loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3, momentum=0.2)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3)
 
     train, test = None, None
     if not cfg.use_fixed_valdata:
-        dataset = P2FDataset(os.path.join(project_dir, 'data'), options=RATE_OPTIONS, fraction=cfg.fraction)
+        dataset = P2FDataset(os.path.join(project_dir, 'data'), options=RATE_OPTIONS, method=cfg.method, fraction=cfg.fraction)
         to_train = int(round(len(dataset) * 0.9))
         train, test = torch.utils.data.random_split(dataset, [to_train, len(dataset) - to_train])
     else:
-        train = P2FDataset(os.path.join(project_dir, 'data'), options=RATE_OPTIONS, fraction=cfg.fraction)
-        test = P2FDataset(os.path.join(project_dir, 'val_data_non_general'), options=RATE_OPTIONS)
+        train = P2FDataset(os.path.join(project_dir, 'data'), options=RATE_OPTIONS, method=cfg.method, fraction=cfg.fraction)
+        test = P2FDataset(os.path.join(project_dir, 'val_data_non_general'), options=RATE_OPTIONS, method=cfg.method)
 
     train_loader = DataLoader(dataset=train, batch_size=cfg.batch_size, shuffle=True, num_workers=cfg.batch_size)
     test_loader = DataLoader(dataset=test, batch_size=cfg.batch_size, shuffle=False, num_workers=cfg.batch_size)
@@ -59,7 +64,7 @@ if __name__ == '__main__':
 
     print(f'Training Samples: {len(train_loader)}, Test Samples: {len(test_loader)}')
 
-    check_size = len(train_loader) / 4
+    check_size = len(train_loader) // 4
     loss_record = []
     precision_record = []
     best_val_accuracy = 0
@@ -70,6 +75,7 @@ if __name__ == '__main__':
             x, y = data
             out = model(x.cuda())
             loss = loss_func(out, torch.LongTensor(y).cuda())
+            running_loss += loss.item()
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()

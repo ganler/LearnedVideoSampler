@@ -55,7 +55,7 @@ def _boxlist2tensor(boxlist: torch.Tensor, tensor_resolution=(608, 352), factor=
     return torch.from_numpy(ret)
 
 @torch.no_grad()
-def _boxlist2tensor_channelstack(boxlists: torch.Tensor, tensor_resolution=(608, 352), factor=2, use_conf=False) -> torch.Tensor:
+def _boxlist2tensor_channelstack(boxlists: torch.Tensor, tensor_resolution=(608, 352), factor=4, use_conf=False) -> torch.Tensor:
     # Input : List[[BoxIndex, X, Y, W, H, CONF]]
     # Output: [SequenceIndex, 1, TensorHeight, TensorWidth]
     ret = np.zeros((len(boxlists), tensor_resolution[1] // factor, tensor_resolution[0] // factor), dtype=np.float32)
@@ -67,6 +67,22 @@ def _boxlist2tensor_channelstack(boxlists: torch.Tensor, tensor_resolution=(608,
                 (x0, y0, x1, y1) = intxyxy
                 ret[index][y0:(y1+1), x0:(x1+1)] += conf if use_conf else 1.
     return torch.from_numpy(ret)
+
+@torch.no_grad()
+def _boxembedding(boxlists, top_n=16) -> torch.Tensor:
+    # Input : List[[BoxIndex, X, Y, W, H, CONF]]
+    # Output: [SequenceIndex, 1, TensorHeight, TensorWidth]
+    ret = torch.zeros((len(boxlists), top_n, 5))
+    for index, boxlist in enumerate(boxlists):
+        if 0 != boxlist.nelement():
+            for i in range(min(top_n, len(boxlist))):
+                ret[index][i] = boxlist[i, :5]
+    return ret
+
+@torch.no_grad()
+def boxembeddingpair(l, r, top_n=16):
+    ret = _boxembedding([l, r], top_n=top_n).unsqueeze(0)
+    return ret
 
 @torch.no_grad()
 def boxlist2tensor(l, r, tensor_res=(608, 352), batch_dim=False):

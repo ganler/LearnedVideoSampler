@@ -22,7 +22,7 @@ from collections import namedtuple
 from itertools import combinations
 from threading import Lock
 from .improcessing import *
-from .improcessing import _boxlist2tensor_channelstack
+from .improcessing import _boxlist2tensor_channelstack, _boxembedding
 from .common import *
 import cv2
 from tqdm import tqdm
@@ -45,12 +45,13 @@ TODO enhancements:
 
 
 class P2FDataset(Dataset):
-    def __init__(self, clip_home, options, fraction=1.0, prev_n=8, factor=4):
-        self.options = options
+    def __init__(self, clip_home, options, method, fraction=1.0, prev_n=8, factor=4):
+        self.options = np.array(options, dtype=np.int32)
         self.max_skip_collection = []
         self.bbox_collection = []
         self.prev_n = prev_n
         self.factor = factor
+        self.method = method
         self.aligned_num = None
 
         # Create TemporalSets.
@@ -82,8 +83,15 @@ class P2FDataset(Dataset):
         f_index = index - clip_index * self.aligned_num
         boxlists = self.bbox_collection[clip_index][f_index:(f_index+self.prev_n)]
         skip = int(self.max_skip_collection[clip_index][f_index+self.prev_n-1])
-        ans = np.nonzero(skip - np.array(self.options, dtype=np.int32) >= 0)[0][-1]
-        return _boxlist2tensor_channelstack(boxlists, factor=self.factor), ans
+        ans = np.nonzero((skip - self.options) >= 0)[0][-1]
+        x = None
+        if self.method == 'embedding':
+            x = _boxembedding(boxlists)
+        elif self.method == 'mask':
+            x = _boxlist2tensor_channelstack(boxlists, factor=self.factor)
+
+        assert x is not None
+        return x, ans
             
 
 class CAPDataset(Dataset):
@@ -148,7 +156,7 @@ class CAPDataset(Dataset):
                 neg = np.array(np.meshgrid(interior_range, border_outlier)).T.reshape(-1, 2)
 
                 for x in pos:
-                    if combinator is boxlist2tensor:
+                    if combinator is boxlist2tensor or combinator is boxembeddingpair:
                         l = boxlists[x[0]]
                         r = boxlists[x[1]]
                     else:
@@ -158,7 +166,7 @@ class CAPDataset(Dataset):
                     self.entries.append(Entry(l, r, 1))
 
                 for x in neg:
-                    if combinator is boxlist2tensor:
+                    if combinator is boxlist2tensor or combinator is boxembeddingpair:
                         l = boxlists[x[0]]
                         r = boxlists[x[1]]
                     else:
@@ -174,7 +182,7 @@ class CAPDataset(Dataset):
 
     def __getitem__(self, index: int):
         l, r, label = self.entries[index]
-        if self.combinator is not boxlist2tensor:
+        if self.combinator is not boxlist2tensor and self.combinator is not boxembeddingpair:
             lock: Lock = l.cap_lock[1]
             cap: cv2.VideoCapture = l.cap_lock[0]
             lock.acquire()
@@ -217,7 +225,7 @@ class CASEvaluator:
                 max_size = len(labels)
                 if raw_data['src_path'] not in self.video_cap_pool.keys():
                     self.video_cap_pool[raw_data['src_path']] = cv2.VideoCapture(raw_data['src_path'])
-                if self.combinator == boxlist2tensor or type(self.combinator) is iou_pairing_skipper:
+                if self.combinator == boxlist2tensor or self.combinator == boxembeddingpair or type(self.combinator) is iou_pairing_skipper:
                     self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
                 else:
                     self.clips.append(
@@ -231,7 +239,7 @@ class CASEvaluator:
             predicted = np.ones(c.max_size) * -1 # -1 is a flag.
 
             def fetch_one(index):
-                if self.combinator == boxlist2tensor or type(self.combinator) is iou_pairing_skipper:
+                if self.combinator == boxlist2tensor or self.combinator == boxembeddingpair or type(self.combinator) is iou_pairing_skipper:
                     return c.data[index]
                 cap: cv2.VideoCapture = self.video_cap_pool[c.data[0]]
                 assert cap.set(cv2.CAP_PROP_POS_FRAMES, c.data[1][index])
@@ -261,11 +269,9 @@ class CASEvaluator:
                         if type(self.combinator) is iou_pairing_skipper:
                             skip_or_not = self.combinator.judge(fetch_one(begin), fetch_one(end - 1))
                         else:
+                            inp = self.combinator(fetch_one(begin), fetch_one(end - 1)).cuda()
                             skip_or_not = torch.max(
-                                model.forward(
-                                    self.combinator(
-                                        fetch_one(begin), fetch_one(end - 1), batch_dim=True
-                                        ).cuda()).data, 1)[1].cpu().numpy()[0] == True
+                                model.forward(inp).data, 1)[1].cpu().numpy()[0] == True
 
                         if skip_or_not:
                             predicted[begin+1 : end-1] = lc

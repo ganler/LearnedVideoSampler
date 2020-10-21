@@ -70,19 +70,19 @@ class SeriesLinearPolicyNet(nn.Module, ABC):
         return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
 
 
-class SeriesUnlinearPolicyNet(nn.Module, ABC):
-    def __init__(self, n_inp, n_opt):
-        super(SeriesUnlinearPolicyNet, self).__init__()
+class BoxNN(nn.Module, ABC):
+    # [Batch, prev_n, top_n, BBOX_XYXY]
+    def __init__(self, n_prev, top_n, n_option):
+        super(BoxNN, self).__init__()
         self.fc = nn.Sequential(
-            nn.Linear(n_inp, n_inp),
+            nn.Linear(top_n * n_prev * 5, 64),
             nn.LeakyReLU(),
-            nn.Linear(n_inp, n_inp // 2),
+            nn.Linear(64, 32),
             nn.LeakyReLU(),
-            nn.Linear(n_inp // 2, n_opt)
+            nn.Linear(32, n_option)
         )
 
     def forward(self, x):
-        # Input Format: [Batch, Data]
         return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
 
 
