@@ -20,7 +20,11 @@ RATE_OPTIONS = np.arange(cfg.action_space)
 VIDEO_FOLDER = os.path.join(project_dir, 'val_data_non_general')
 
 if __name__ == '__main__':
-    dirlist = [os.path.join(VIDEO_FOLDER, x) for x in os.listdir(VIDEO_FOLDER) if os.path.isdir(os.path.join(VIDEO_FOLDER, x))]
+    dirlist = [
+        os.path.join(VIDEO_FOLDER, x) 
+        for x in os.listdir(VIDEO_FOLDER) 
+        if os.path.isdir(os.path.join(VIDEO_FOLDER, x)) and 'video0' in x  # FIXME: ...
+        ]
     print('Evaluating best skipping algorithm ...')
 
     skip_ratio = []
@@ -43,5 +47,6 @@ if __name__ == '__main__':
         print(
             f'Best skipping: skipped_frames: {skip_accum} / {len(test_data)} = {skip_accum / len(test_data) * 100:.3f}%, avg_accuracy: {avg_accuracy * 100:.3f} %')
 
-    print(skip_ratio, acc_list)
+    print('skip ratio', skip_ratio)
+    print('acc list', acc_list)
     print(np.array(skip_ratio).mean(), np.array(acc_list).mean())

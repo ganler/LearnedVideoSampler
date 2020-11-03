@@ -7,12 +7,33 @@ import cv2
 from typing import List
 import torch
 import numpy as np
+from .common import *
+
+def diff_encoder(l, r, raw_reso=(608, 352), reso=32):
+    w, h = raw_reso
+    ret = np.zeros((3, reso, reso))
+    pairs = iou_pairing(l, r)
+    for p in pairs:
+        x = int(p[0] / w * reso)
+        y = int(p[1] / h * reso)
+        ret[:, y, x] += p[2:]
+    return torch.from_numpy(ret).float().view(-1)
 
 def opticalflow(l, r):
     l = cv2.cvtColor(l, cv2.COLOR_BGR2GRAY)
     r = cv2.cvtColor(r, cv2.COLOR_BGR2GRAY)
     flow = cv2.calcOpticalFlowFarneback(l, r, None, 0.5, 3, 15, 3, 5, 1.2, 0)
     return flow
+
+def diffencoder(l, r, raw_reso=(608, 352), fac=4):
+    w, h = raw_reso
+    ret = np.zeros((3, h // fac, w // fac))
+    pairs = iou_pairing(l, r)
+    for p in pairs:
+        x = int(p[0] / fac)
+        y = int(p[1] / fac)
+        ret[:, y, x] += p[2:]
+    return ret
 
 def concat3channel2tensor(l, r, batch_dim=False):
     l = cv2.cvtColor(l, cv2.COLOR_BGR2GRAY)

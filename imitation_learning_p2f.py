@@ -13,13 +13,13 @@ import argparse
 project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 
-from application.carcounter.CarCounter import YOLOConfig, preprocess_image
+from application.carcounter.CarCounter import YOLOConfig
 from models.backbone import SimpleBoxMaskCNN, BoxNN
 from utility.imcliploader import P2FDataset
 from utility.common import *
 
 config = YOLOConfig()
-RATE_OPTIONS = [0, 2, 4, 8, 12, 16]
+RATE_OPTIONS = range(32)
 RESULT_FOLDER = os.path.join(project_dir, 'result')
 MODEL_FOLDER = os.path.join(project_dir, 'trained')
 
@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--use_fixed_valdata', type=str2bool, default=True)
 parser.add_argument('--epoch', type=int, default=2)
 parser.add_argument('--n_prev', type=int, default=8)
-parser.add_argument('--batch_size', type=int, default=64)
+parser.add_argument('--batch_size', type=int, default=8)
 parser.add_argument('--fraction', type=float, default=1.0)
 parser.add_argument('--method', type=str, default='embedding')
 cfg = parser.parse_args()
@@ -41,8 +41,8 @@ if __name__ == '__main__':
     model = model.cuda()
     best_model = best_model.cuda()
 
-    loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3)
+    loss_func = distance_loss(len(RATE_OPTIONS))
+    optimizer = torch.optim.RMSprop(model.parameters())
 
     train, test = None, None
     if not cfg.use_fixed_valdata:
@@ -58,15 +58,12 @@ if __name__ == '__main__':
 
     records = {
         'loss': [],
-        'skipped_frames': [],
-        'mae': []
+        'val_distance': []
     }
 
     print(f'Training Samples: {len(train_loader)}, Test Samples: {len(test_loader)}')
 
     check_size = len(train_loader) // 4
-    loss_record = []
-    precision_record = []
     best_val_accuracy = 0
 
     for epoch in range(cfg.epoch):
@@ -82,18 +79,19 @@ if __name__ == '__main__':
 
             if (i + 1) % (check_size) == 0:
                 print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / check_size))
-                loss_record.append(running_loss / check_size)
+                records['loss'].append(running_loss / check_size)
                 running_loss = 0.0
-                n_right = 0
+                val_distance = 0
+                opts = np.array(RATE_OPTIONS)
                 for x, y in tqdm(test_loader, 0):
                     with torch.no_grad():
                         out = model(x.cuda())
                         _, predicted = torch.max(out.data, 1)
-                        n_right += (predicted.cpu().numpy() == np.array(y)).sum()
-                acc = n_right / len(test)
-                print(f'Validation accuracy: {acc * 100:.2f} %')
-                precision_record.append(acc)
-                if acc > best_val_accuracy:
+                        val_distance += np.abs(opts[predicted.cpu().numpy()] - opts[y]).sum()
+                val_distance /= len(test)
+                print(f'AVG. |pred - label|: {val_distance}.')
+                records['val_distance'].append(val_distance)
+                if val_distance < best_val_accuracy:
                     best_model.load_state_dict(model.state_dict())
 
     record_sign = f'IL-{datetime.now().isoformat().split(".")[0]}-epoch-{cfg.epoch}-clip-{len(train_loader)}'

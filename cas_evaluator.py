@@ -16,9 +16,10 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--tag', type=str, default=None)
-parser.add_argument('--fetch_size', type=int, default=64)
+parser.add_argument('--fetch_size', type=int, default=8)
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 parser.add_argument('--iou_pairing', type=float, default=None)
+parser.add_argument('--max_diff', type=int, default=2)
 parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] [boxtensor] otherwise [concated image]')
 cfg = parser.parse_args()
 print(cfg)
@@ -34,7 +35,8 @@ else:
 if __name__ == "__main__":
     evaluator = CASEvaluator(
         folder=os.path.join(project_dir, 'val_data_non_general'), 
-        fetch_size=cfg.fetch_size, 
+        fetch_size=cfg.fetch_size,
+        max_diff=cfg.max_diff, 
         combinator=cfg.combinator)
 
     model = None

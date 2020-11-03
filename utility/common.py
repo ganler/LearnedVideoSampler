@@ -1,6 +1,8 @@
 import argparse
+from typing import no_type_check
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -11,6 +13,32 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+def expected_distribution(label, n_opt):
+    '''
+    label: [B]
+    '''
+    ret = torch.arange(n_opt, dtype=torch.float).unsqueeze(0).repeat(len(label), 1).transpose(0, -1)
+    ret = ret.to(label.device)
+    ret = - (ret - label).transpose(0, -1).abs() + n_opt
+    return ret / ret.sum(axis=1).reshape(-1, 1)
+
+class distance_loss:
+    def __init__(self, n_opt):
+        self.n_opt = n_opt
+    
+    def __call__(self, pred, label):
+        '''
+        pred: [B, N_OPT]
+        label: [B]
+        '''
+        tar = expected_distribution(label, self.n_opt)
+        ret = F.mse_loss(pred, tar)
+        # print(pred)
+        # print(label)
+        # print(ret)
+        return ret
+
 
 def get_iou(pred_box, gt_box):
     """
@@ -42,28 +70,68 @@ def get_iou(pred_box, gt_box):
 
     return iou
 
-def iou_pairing(l: torch.Tensor, r: torch.Tensor) -> np.array:
-    assert len(l) == len(r)
+def iou_pairing(l: torch.Tensor, r: torch.Tensor, negconst=-5, inf=1000) -> np.array:
+    '''
+    || Output: pairs...
+    '''
+    ret = []
+    paired_l = []
+    paired_r = []
 
-    if len(l) == 0:
-        return np.array([])
+    buyers, gifts = None, None
+    if len(l) != 0:
+        buyers = l.numpy()[:, :4]  # xyxy
 
-    l = l.numpy()[:, :4]
-    r = r.numpy()[:, :4]
-    occ_r = []
-    ret = np.zeros((len(l), 3))
-    for i, ll in enumerate(l):
-        best_j = 0
-        best_iou = -10000
-        for j, rr in enumerate(r):
-            if j in occ_r:
-                continue
-            cur_iou = get_iou(ll, rr)
-            if cur_iou > best_iou:
-                best_iou = cur_iou
-                best_j = j
-        occ_r.append(best_j)
-        ret[i] = [i, best_j, best_iou]
+    if len(r) != 0:
+        gifts = r.numpy()[:, :4]
+
+    if len(l) != 0 and len(r) != 0:
+        table = np.zeros((len(buyers), len(gifts)))
+
+        for i, b in enumerate(buyers):
+            for j, g in enumerate(gifts):
+                table[i, j] = get_iou(b, g)
+
+        while True:
+            index2d = np.unravel_index(table.argmax(), table.shape)
+            if table[index2d] <= 0:
+                break
+            from_ = buyers[index2d[0]]
+            to_ = gifts[index2d[1]]
+            # [x, y, dx, dy, iou]
+            ret.append([
+                (from_[0] + from_[2]) / 2,
+                (from_[1] + from_[3]) / 2,
+                (from_[1] + from_[3] - to_[0] - to_[2]) / 2,
+                (from_[1] + from_[3] - to_[1] - to_[3]) / 2,
+                table[index2d]
+            ])
+            paired_l.append(index2d[0])
+            paired_r.append(index2d[1])
+            table[index2d[0], :] = -1
+            table[:, index2d[1]] = -1
+
+    for ll in range(len(l)):
+        if ll not in paired_l:
+            from_ = buyers[ll]
+            ret.append([
+                (from_[0] + from_[2]) / 2,
+                (from_[1] + from_[3]) / 2,
+                inf,
+                inf,
+                negconst
+            ])
+
+    for rr in range(len(r)):
+        if rr not in paired_r:
+            to_ = gifts[rr]
+            ret.append([
+                (to_[0] + to_[2]) / 2,
+                (to_[1] + to_[3]) / 2,
+                -inf,
+                -inf,
+                negconst
+            ])
     return ret
 
 class iou_pairing_skipper:
@@ -71,7 +139,7 @@ class iou_pairing_skipper:
         self.conf_thresh = conf_thresh
 
     def judge(self, l, r):
-        out = iou_pairing(l, r)
+        out = np.array(iou_pairing(l, r))
         if len(out) == 0:
             return True
-        return np.average(out[:, 2]) > self.conf_thresh
+        return np.average(out[:, -1]) > self.conf_thresh

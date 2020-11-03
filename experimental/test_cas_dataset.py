@@ -19,7 +19,7 @@ project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
 from utility.improcessing import *
-from models.backbone import ImagePolicyNet, BoxNN
+from models.backbone import ImagePolicyNet, CASNet
 from utility.imcliploader import CAPDataset
 from utility.common import str2bool
 import argparse
@@ -27,7 +27,7 @@ import argparse
 parser = argparse.ArgumentParser()
 # This means that training & evaluation data all come from `data` folder.
 parser.add_argument('--use_fixed_valdata', type=str2bool, default=True)
-parser.add_argument('--epoch', type=int, default=2)
+parser.add_argument('--epoch', type=int, default=15)
 parser.add_argument('--fraction', type=float, default=1.0)
 parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] [boxtensor] otherwise [concated image]')
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
@@ -35,14 +35,14 @@ cfg = parser.parse_args()
 print(cfg)
 if cfg.combinator == 'boxtensor':
     cfg.combinator = boxlist2tensor
-elif cfg.combinator == 'embedding':
-    cfg.combinator = boxembeddingpair
+if cfg.combinator == 'boxdiff':
+    cfg.combinator = diff_encoder
 else:
     cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
 
 if __name__ == "__main__":
-    model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone) if cfg.combinator != boxembeddingpair else BoxNN(n_prev=2, n_option=2, top_n=16)
-    best_model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone) if cfg.combinator != boxembeddingpair else BoxNN(n_prev=2, n_option=2, top_n=16)
+    model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone) if cfg.combinator != diff_encoder else CASNet(32*32*3)
+    best_model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone) if cfg.combinator != diff_encoder else CASNet(32*32*3)
     
     model = model.cuda()
     best_model = best_model.cuda()
@@ -64,8 +64,8 @@ if __name__ == "__main__":
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 
-    train_loader = DataLoader(dataset=train, batch_size=32, shuffle=True, num_workers=64)
-    test_loader = DataLoader(dataset=test, batch_size=32, shuffle=False, num_workers=64)
+    train_loader = DataLoader(dataset=train, batch_size=16, shuffle=True, num_workers=32)
+    test_loader = DataLoader(dataset=test, batch_size=16, shuffle=False, num_workers=32)
 
     loss_record = []
     precision_record = []
@@ -87,11 +87,13 @@ if __name__ == "__main__":
                 loss_record.append(running_loss / check_size)
                 running_loss = 0.0
                 n_right = 0
+                model.eval()
                 for x, y in tqdm(test_loader):
                     with torch.no_grad():
                         out = model(x.cuda())
                         _, predicted = torch.max(out.data, 1)
                         n_right += (predicted.cpu().numpy() == np.array(y)).sum()
+                model.train()
                 acc = n_right / len(test)
                 print(f'Validation accuracy: {acc * 100:.2f} %')
                 precision_record.append(acc)

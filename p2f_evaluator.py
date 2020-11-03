@@ -23,7 +23,7 @@ from models.backbone import BoxNN, SimpleBoxMaskCNN
 import torch
 import argparse
 
-RATE_OPTIONS = [0, 2, 4, 8, 12, 16]
+RATE_OPTIONS = range(32)
 parser = argparse.ArgumentParser()
 parser.add_argument('--method', type=str, default='embedding')
 parser.add_argument('--model', type=str)
@@ -39,8 +39,11 @@ VIDEO_FOLDER = os.path.join(project_dir, cfg.dir)
 
 
 if __name__ == '__main__':
-    dirlist = [os.path.join(VIDEO_FOLDER, x) for x in os.listdir(VIDEO_FOLDER) if os.path.isdir(os.path.join(VIDEO_FOLDER, x))]
-    print('Evaluation random skipping algorithm ...')
+    dirlist = [
+        os.path.join(VIDEO_FOLDER, x) for x in os.listdir(VIDEO_FOLDER) 
+        if os.path.isdir(os.path.join(VIDEO_FOLDER, x)) and 'video0' in x  # FIXME: ...
+        ]
+    print('Evaluation Model Based skipping algorithm ...')
 
     model = SimpleBoxMaskCNN(n_option=len(RATE_OPTIONS), n_stack=cfg.n_prev) if cfg.method == 'mask' else BoxNN(n_prev=cfg.n_prev, n_option=len(RATE_OPTIONS), top_n=16)
     model.load_state_dict(torch.load(cfg.model))

@@ -6,7 +6,6 @@ from torch import nn
 from torchvision.models import resnet18
 from typing import List
 import torch.nn.functional as F
-import cv2
 
 '''
 Input signal can be
@@ -36,11 +35,11 @@ def boxlist2tensor(boxlists: List[torch.Tensor], tensor_resolution, factor=4) ->
 
 def CASNet(n_inp, n_out=2):
     return nn.Sequential(
-            nn.Linear(n_inp, 128),
+            nn.Linear(n_inp, n_inp * 4),
             nn.LeakyReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(n_inp * 4, n_inp),
             nn.LeakyReLU(),
-            nn.Linear(64, n_out),
+            nn.Linear(n_inp, n_out),
             nn.Softmax(dim=1)
         )
 
@@ -65,22 +64,6 @@ class SeriesLinearPolicyNet(nn.Module, ABC):
     def __init__(self, n_inp, n_opt):
         super(SeriesLinearPolicyNet, self).__init__()
         self.fc = nn.Linear(n_inp, n_opt)
-
-    def forward(self, x):
-        return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)
-
-
-class BoxNN(nn.Module, ABC):
-    # [Batch, prev_n, top_n, BBOX_XYXY]
-    def __init__(self, n_prev, top_n, n_option):
-        super(BoxNN, self).__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(top_n * n_prev * 5, 64),
-            nn.LeakyReLU(),
-            nn.Linear(64, 32),
-            nn.LeakyReLU(),
-            nn.Linear(32, n_option)
-        )
 
     def forward(self, x):
         return nn.functional.log_softmax(self.fc(x.view(x.shape[0], -1)), dim=1)

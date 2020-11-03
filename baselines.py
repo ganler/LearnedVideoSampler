@@ -34,7 +34,10 @@ VIDEO_FOLDER = os.path.join(project_dir, cfg.dir)
 
 
 if __name__ == '__main__':
-    dirlist = [os.path.join(VIDEO_FOLDER, x) for x in os.listdir(VIDEO_FOLDER) if os.path.isdir(os.path.join(VIDEO_FOLDER, x))]
+    dirlist = [
+        os.path.join(VIDEO_FOLDER, x) for x in os.listdir(VIDEO_FOLDER) 
+        if os.path.isdir(os.path.join(VIDEO_FOLDER, x)) and 'video0' in x  # FIXME: ...
+        ]
     print('Evaluation random skipping algorithm ...')
 
     skip_ratio = []
@@ -67,7 +70,7 @@ if __name__ == '__main__':
     np.save(os.path.join(project_dir, 'result', f'{tag}.skip_ratio.npy'), skip_ratio)
     np.save(os.path.join(project_dir, 'result', f'{tag}.mae_list.npy'), mae_list)
 
-    print(skip_ratio)
-    print(mae_list)
+    # print(skip_ratio)
+    # print(mae_list)
     print(f'AVG Skipping Ratio: {np.array(skip_ratio).mean()}')
     print(f'AVG MAE : {np.array(mae_list).mean()}')

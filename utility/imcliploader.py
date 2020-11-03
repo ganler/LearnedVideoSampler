@@ -10,7 +10,7 @@ Dataloader in PyTorch Style.
 '''
 
 from dataclasses import dataclass
-from random import sample
+import random
 from numpy.core.numerictypes import maximum_sctype
 import torch
 import numpy as np
@@ -54,8 +54,8 @@ class P2FDataset(Dataset):
         self.method = method
         self.aligned_num = None
 
-        # Create TemporalSets.
-        folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x))]
+        # Create TemporalSets. # FIXME: Try one video 1st.
+        folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x)) and 'video0' in x]
         folderlist = folderlist[:int(round(len(folderlist) * fraction))]
         print('Loading data...')
 
@@ -92,16 +92,17 @@ class P2FDataset(Dataset):
 
         assert x is not None
         return x, ans
-            
+
 
 class CAPDataset(Dataset):
-    def __init__(self, clip_home, outlier_size=30, fraction=1.0, sample_rate=0.25, combinator=opticalflow2tensor):
+    def __init__(self, clip_home, outlier_size=30, fraction=1.0, combinator=opticalflow2tensor, max_diff=2, window_size=16):
         self.entries: List[Entry] = []
+        self.max_diff = max_diff
         self.combinator = combinator
         self.video_cap_pool = dict()
 
-        # Create TemporalSets.
-        folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x))]
+        # Create TemporalSets. # FIXME: ...
+        folderlist = [x for x in os.listdir(clip_home) if os.path.isdir(os.path.join(clip_home, x)) and 'video0' in x]
         folderlist = folderlist[:int(round(len(folderlist) * fraction))]
         print('Loading data...')
         for folder in tqdm(folderlist):
@@ -118,61 +119,48 @@ class CAPDataset(Dataset):
             if src_path not in self.video_cap_pool.keys():
                 self.video_cap_pool[src_path] = (cv2.VideoCapture(src_path), Lock())
 
-            index = 0
-            while index < len(max_skip):
-                end = index + max_skip[index]
-                if end + outlier_size > len(max_skip):
-                    break
-                if max_skip[index] < 3:  # No skip? No set!
-                    index = end
-                    continue
+            begins = np.arange(0, len(car_count) // window_size)
+            ends = begins + np.random.randint(2, window_size, size=(len(begins)))
 
-                # Positive: a * (a - 1) / 2
-                # Negative: ab
-                # a = 2 b + 1
-                interior_range = np.arange(index, end)
-                border_outlier = np.arange(end, end + outlier_size)
-                border_outlier = border_outlier[np.where(car_count[end:end + outlier_size] == car_count[index])[0]]
+            pos_labels = []
+            neg_labels = []
+            for k, (li, ri) in enumerate(zip(begins, ends)):
+                label = int(car_count[li:ri].std() < 0.1)
+                if label:
+                    pos_labels.append(k)
+                else:
+                    neg_labels.append(k)
+                    
+            if len(pos_labels) > len(neg_labels):
+                pos_labels = random.sample(pos_labels, len(neg_labels))
+            else:
+                neg_labels = random.sample(neg_labels, len(pos_labels))
 
-                a = max(1, int(round(len(interior_range) * sample_rate)))
-                b = max(1, int(round(len(border_outlier) * sample_rate)))
-
-                if a > 2 * b + 1:
-                    a = 2 * b + 1
-                
-                if b > (a - 1) // 2:
-                    b = (a - 1) // 2                
-                
-                index = end
-                if a == 0 or b == 0 or len(border_outlier) == 0:
-                    continue
-
-                interior_range = interior_range[np.sort(np.random.choice(len(interior_range), a))]
-                border_outlier = border_outlier[np.sort(np.random.choice(len(border_outlier), b))]
-
-                assert border_outlier.min() > interior_range.max()
-
-                pos = [x for x in combinations(interior_range, 2)]
-                neg = np.array(np.meshgrid(interior_range, border_outlier)).T.reshape(-1, 2)
-
-                for x in pos:
-                    if combinator is boxlist2tensor or combinator is boxembeddingpair:
-                        l = boxlists[x[0]]
-                        r = boxlists[x[1]]
-                    else:
-                        # (Video, Index)
-                        l = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[0]], reso)
-                        r = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[1]], reso)
-                    self.entries.append(Entry(l, r, 1))
-
-                for x in neg:
-                    if combinator is boxlist2tensor or combinator is boxembeddingpair:
-                        l = boxlists[x[0]]
-                        r = boxlists[x[1]]
-                    else:
-                        l = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[0]], reso)
-                        r = FrameDescription(self.video_cap_pool[src_path], frame_idx[x[1]], reso)
-                    self.entries.append(Entry(l, r, 0)) # 0 => False
+            for idx in pos_labels:
+                li = begins[idx]
+                ri = ends[idx]
+                assert li < ri
+                if combinator in [boxlist2tensor, boxembeddingpair, diff_encoder]:
+                    l = boxlists[li]
+                    r = boxlists[ri]
+                else:
+                    # (Video, Index)
+                    l = FrameDescription(self.video_cap_pool[src_path], frame_idx[li], reso)
+                    r = FrameDescription(self.video_cap_pool[src_path], frame_idx[ri], reso)
+                self.entries.append(Entry(l, r, 1))
+            
+            for idx in neg_labels:
+                li = begins[idx]
+                ri = ends[idx]
+                assert li < ri
+                if combinator in [boxlist2tensor, boxembeddingpair, diff_encoder]:
+                    l = boxlists[li]
+                    r = boxlists[ri]
+                else:
+                    # (Video, Index)
+                    l = FrameDescription(self.video_cap_pool[src_path], frame_idx[li], reso)
+                    r = FrameDescription(self.video_cap_pool[src_path], frame_idx[ri], reso)
+                self.entries.append(Entry(l, r, 0))
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -182,7 +170,7 @@ class CAPDataset(Dataset):
 
     def __getitem__(self, index: int):
         l, r, label = self.entries[index]
-        if self.combinator is not boxlist2tensor and self.combinator is not boxembeddingpair:
+        if self.combinator not in [boxlist2tensor, boxembeddingpair, diff_encoder]:
             lock: Lock = l.cap_lock[1]
             cap: cv2.VideoCapture = l.cap_lock[0]
             lock.acquire()
@@ -210,12 +198,13 @@ ClipElement = namedtuple('ClipElement', ('data', 'max_size', 'labels'))
 
 
 class CASEvaluator:
-    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor):
+    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, max_diff=2):
         self.clips: List[ClipElement] = []
         self.fetch_size = fetch_size
         self.video_cap_pool = dict()
         self.combinator = combinator
-        item_list = os.listdir(folder)
+        self.tolerant_diff = max_diff
+        item_list = [x for x in os.listdir(folder) if 'video0' in x]  # FIXME: ...
         assert len(item_list) > 0
         for f in tqdm(item_list):
             if os.path.isdir(os.path.join(folder, f)):
@@ -225,7 +214,7 @@ class CASEvaluator:
                 max_size = len(labels)
                 if raw_data['src_path'] not in self.video_cap_pool.keys():
                     self.video_cap_pool[raw_data['src_path']] = cv2.VideoCapture(raw_data['src_path'])
-                if self.combinator == boxlist2tensor or self.combinator == boxembeddingpair or type(self.combinator) is iou_pairing_skipper:
+                if self.combinator in [boxlist2tensor, boxembeddingpair, diff_encoder] or type(self.combinator) is iou_pairing_skipper:
                     self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
                 else:
                     self.clips.append(
@@ -239,7 +228,7 @@ class CASEvaluator:
             predicted = np.ones(c.max_size) * -1 # -1 is a flag.
 
             def fetch_one(index):
-                if self.combinator == boxlist2tensor or self.combinator == boxembeddingpair or type(self.combinator) is iou_pairing_skipper:
+                if self.combinator in [boxlist2tensor, boxembeddingpair, diff_encoder] or type(self.combinator) is iou_pairing_skipper:
                     return c.data[index]
                 cap: cv2.VideoCapture = self.video_cap_pool[c.data[0]]
                 assert cap.set(cv2.CAP_PROP_POS_FRAMES, c.data[1][index])
@@ -264,7 +253,7 @@ class CASEvaluator:
                     rc = c.labels[end - 1]
                     predicted[begin] = lc
                     predicted[end - 1] = rc
-                    if lc == rc:
+                    if abs(lc - rc) <= self.tolerant_diff:
                         skip_or_not = None
                         if type(self.combinator) is iou_pairing_skipper:
                             skip_or_not = self.combinator.judge(fetch_one(begin), fetch_one(end - 1))
