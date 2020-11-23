@@ -20,7 +20,7 @@ sys.path.append(project_dir)
 
 from utility.improcessing import *
 from models.backbone import ImagePolicyNet, CASNet
-from utility.imcliploader import CAPDataset
+from utility.imcliploader import CASDataset
 from utility.common import str2bool
 import argparse
 
@@ -55,12 +55,12 @@ if __name__ == "__main__":
     test = None
 
     if not cfg.use_fixed_valdata:
-        dataset = CAPDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
+        dataset = CASDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
         to_train = int(round(len(dataset) * 0.9))
         train, test = torch.utils.data.random_split(dataset, [to_train, len(dataset) - to_train])
     else:
-        train = CAPDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
-        test = CAPDataset(os.path.join(project_dir, 'val_data_non_general'), combinator=cfg.combinator)
+        train = CASDataset(os.path.join(project_dir, 'data'), fraction=cfg.fraction, combinator=cfg.combinator)
+        test = CASDataset(os.path.join(project_dir, 'val_data_non_general'), combinator=cfg.combinator)
 
     print(f'Lengths: TRAIN = {len(train)}, TEST = {len(test)}')
 

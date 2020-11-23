@@ -43,6 +43,26 @@ def CASNet(n_inp, n_out=2):
             nn.Softmax(dim=1)
         )
 
+class ResEmbedding(nn.Module, ABC):
+    def __init__(self, n_prev, n_opt, frozen=True):
+        super(ResEmbedding, self).__init__()
+        self.backbone = resnet18(pretrained=True)
+        self.fc = nn.Sequential(
+            nn.Linear(1000 * n_prev, n_opt),
+            nn.Softmax(dim=1)
+        )
+
+        if frozen:
+            self.backbone.requires_grad_(False)
+            self.backbone.eval()
+    
+    # [B, N, C, H, W]
+    def forward(self, x):
+        b = x.shape[0]
+        x = self.backbone(x.view(-1, *x.shape[2:]))
+        # [B, n_prev, feature]
+        return self.fc(x.view(b, -1))
+
 
 class ImagePolicyNet(nn.Module, ABC):
     def __init__(self, n_opt, frozen=False, pretrained=False):

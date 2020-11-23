@@ -4,7 +4,7 @@
 # https://opensource.org/licenses/MIT
 
 from utility.imcliploader import CASEvaluator
-from models.backbone import ImagePolicyNet, BoxNN
+from models.backbone import ImagePolicyNet
 import os
 import torch
 from utility.common import *
@@ -16,7 +16,8 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--tag', type=str, default=None)
-parser.add_argument('--fetch_size', type=int, default=8)
+parser.add_argument('--fetch_size', type=int, default=16)
+parser.add_argument('--best', type=str2bool, default=False)
 parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
 parser.add_argument('--iou_pairing', type=float, default=None)
 parser.add_argument('--max_diff', type=int, default=2)
@@ -37,12 +38,13 @@ if __name__ == "__main__":
         folder=os.path.join(project_dir, 'val_data_non_general'), 
         fetch_size=cfg.fetch_size,
         max_diff=cfg.max_diff, 
-        combinator=cfg.combinator)
+        combinator=cfg.combinator,
+        best=cfg.best)
 
     model = None
     if cfg.iou_pairing is None:
         torch.manual_seed(1999)
-        model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda() if cfg.combinator != boxembeddingpair else BoxNN(n_prev=2, n_option=2, top_n=16)
+        model = ImagePolicyNet(n_opt=2, pretrained=cfg.pretrained_backbone).cuda()
         model = model.cuda()
         if cfg.tag is not None:
             resdir = os.path.join(project_dir, 'trained')

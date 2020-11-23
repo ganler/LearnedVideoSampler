@@ -8,5 +8,6 @@ trained
 log*.txt
 result/
 nohup*
+.zip*
 
 !application/carcounter/data

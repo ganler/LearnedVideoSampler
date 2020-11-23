@@ -25,6 +25,7 @@ from .improcessing import *
 from .improcessing import _boxlist2tensor_channelstack, _boxembedding
 from .common import *
 import cv2
+import multiprocessing
 from tqdm import tqdm
 
 from prefetch_generator import BackgroundGenerator
@@ -45,13 +46,16 @@ TODO enhancements:
 
 
 class P2FDataset(Dataset):
-    def __init__(self, clip_home, options, method, fraction=1.0, prev_n=8, factor=4):
+    def __init__(self, clip_home, options, method='image', fraction=1.0, prev_n=8, factor=4):
         self.options = np.array(options, dtype=np.int32)
         self.max_skip_collection = []
         self.bbox_collection = []
         self.prev_n = prev_n
+        self.sampling = len(options)
         self.factor = factor
+        self.frames = []
         self.method = method
+        self.video_kv = {}
         self.aligned_num = None
 
         # Create TemporalSets. # FIXME: Try one video 1st.
@@ -63,38 +67,67 @@ class P2FDataset(Dataset):
             folder = os.path.join(clip_home, folder)
             raw_data = np.load(os.path.join(folder, 'result.npy'), allow_pickle=True).item()
             max_skip = np.array(raw_data['max_skip'], dtype=np.int32) - 1
-            boxlists = raw_data['boxlists']
 
             self.max_skip_collection.append(max_skip)
-            self.bbox_collection.append(boxlists)
+            if self.method != 'image':
+                boxlists = raw_data['boxlists']
+                self.bbox_collection.append(boxlists)
+            else:
+                self.video_kv[raw_data['src_path']] = {}
+                self.frames.append({'reso': raw_data['resolution'], 'videokey': raw_data['src_path'], 'ids': raw_data['frame_ids']})
 
             if self.aligned_num is None:
-                self.aligned_num = len(boxlists) - (prev_n - 1)
-            assert len(boxlists) - (prev_n - 1) == self.aligned_num
+                self.aligned_num = len(max_skip) - (prev_n - 1)
+            assert len(max_skip) - (prev_n - 1) == self.aligned_num
+        
+        for k in self.video_kv:
+            self.video_kv[k] = {'cap': cv2.VideoCapture(k), 'lk': Lock()}
 
     def __len__(self) -> int:
-        return self.aligned_num * len(self.max_skip_collection)
+        return (self.aligned_num // self.sampling) * len(self.max_skip_collection)
     
     def __iter__(self):
         return BackgroundGenerator(super().__iter__())
 
     def __getitem__(self, index: int):
-        clip_index = index // self.aligned_num
-        f_index = index - clip_index * self.aligned_num
-        boxlists = self.bbox_collection[clip_index][f_index:(f_index+self.prev_n)]
-        skip = int(self.max_skip_collection[clip_index][f_index+self.prev_n-1])
-        ans = np.nonzero((skip - self.options) >= 0)[0][-1]
+        n_sample_per_clip = self.aligned_num // self.sampling
+        clip_index = index // n_sample_per_clip
+        clip_size = len(self.max_skip_collection[clip_index])
+        seg_index = index - clip_index * n_sample_per_clip
+        begin = clip_size // n_sample_per_clip * seg_index
+        end = begin + self.prev_n
+        best_skip = int(self.max_skip_collection[clip_index][end-1])
+        ans = np.nonzero((best_skip - self.options) >= 0)[0][-1]
+        
         x = None
-        if self.method == 'embedding':
-            x = _boxembedding(boxlists)
+        if self.method == 'image':
+            frame_meta = self.frames[clip_index]
+            kv = self.video_kv[frame_meta['videokey']]
+            cap = kv['cap']
+            lk = kv['lk']
+            wh = frame_meta['reso']
+            begin_frame = frame_meta['ids'][begin]
+            lk.acquire()
+            frames = []
+            assert cap.set(cv2.CAP_PROP_POS_FRAMES, begin_frame)
+            for _ in range(self.prev_n):
+                success, frame = cap.read()
+                assert success
+                frames.append(frame)
+            lk.release()
+            tensors = []
+            for f in frames:
+                tensors.append(totensor(im=f, wh=wh))
+            x = torch.stack(tensors)
         elif self.method == 'mask':
+            boxlists = self.bbox_collection[clip_index][begin:end]
             x = _boxlist2tensor_channelstack(boxlists, factor=self.factor)
 
         assert x is not None
         return x, ans
 
 
-class CAPDataset(Dataset):
+class CASDataset(Dataset):
     def __init__(self, clip_home, outlier_size=30, fraction=1.0, combinator=opticalflow2tensor, max_diff=2, window_size=16):
         self.entries: List[Entry] = []
         self.max_diff = max_diff
@@ -198,10 +231,11 @@ ClipElement = namedtuple('ClipElement', ('data', 'max_size', 'labels'))
 
 
 class CASEvaluator:
-    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, max_diff=2):
+    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, max_diff=2, best=False):
         self.clips: List[ClipElement] = []
         self.fetch_size = fetch_size
         self.video_cap_pool = dict()
+        self.best = best
         self.combinator = combinator
         self.tolerant_diff = max_diff
         item_list = [x for x in os.listdir(folder) if 'video0' in x]  # FIXME: ...
@@ -220,7 +254,7 @@ class CASEvaluator:
                     self.clips.append(
                         ClipElement(data=(raw_data['src_path'], raw_data['frame_ids'], raw_data['resolution']), max_size=max_size, labels=labels))
 
-    def evaluate(self, model, mae_bound=None, train_hook=None):
+    def evaluate(self, model, train_hook=None):
         ret_mae = []
         ret_skip = []
         for cc in tqdm(self.clips):
@@ -253,9 +287,13 @@ class CASEvaluator:
                     rc = c.labels[end - 1]
                     predicted[begin] = lc
                     predicted[end - 1] = rc
+                    
                     if abs(lc - rc) <= self.tolerant_diff:
                         skip_or_not = None
-                        if type(self.combinator) is iou_pairing_skipper:
+                        
+                        if self.best:
+                            skip_or_not = len(np.unique(c.labels[begin+1 : end-1])) < 2 and c.labels[begin+1] == lc
+                        elif type(self.combinator) is iou_pairing_skipper:
                             skip_or_not = self.combinator.judge(fetch_one(begin), fetch_one(end - 1))
                         else:
                             inp = self.combinator(fetch_one(begin), fetch_one(end - 1)).cuda()
