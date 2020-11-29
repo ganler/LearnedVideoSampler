@@ -9,5 +9,7 @@ log*.txt
 result/
 nohup*
 .zip*
+json
+gtdata
 
 !application/carcounter/data

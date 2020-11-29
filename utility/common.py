@@ -105,7 +105,7 @@ def get_iou(pred_box, gt_box):
 
     return iou
 
-def iou_pairing(l: torch.Tensor, r: torch.Tensor, negconst=-5, inf=1000) -> np.array:
+def iou_pairing(l: torch.Tensor, r: torch.Tensor, negconst=-5, inf=1000, use_index=False) -> np.array:
     '''
     || Output: pairs...
     '''
@@ -139,7 +139,7 @@ def iou_pairing(l: torch.Tensor, r: torch.Tensor, negconst=-5, inf=1000) -> np.a
                 (from_[1] + from_[3]) / 2,
                 (from_[1] + from_[3] - to_[0] - to_[2]) / 2,
                 (from_[1] + from_[3] - to_[1] - to_[3]) / 2,
-                table[index2d]
+                table[index2d] if not use_index else index2d
             ])
             paired_l.append(index2d[0])
             paired_r.append(index2d[1])
@@ -154,7 +154,7 @@ def iou_pairing(l: torch.Tensor, r: torch.Tensor, negconst=-5, inf=1000) -> np.a
                 (from_[1] + from_[3]) / 2,
                 inf,
                 inf,
-                negconst
+                negconst if not use_index else (ll, -1)
             ])
 
     for rr in range(len(r)):
@@ -165,9 +165,9 @@ def iou_pairing(l: torch.Tensor, r: torch.Tensor, negconst=-5, inf=1000) -> np.a
                 (to_[1] + to_[3]) / 2,
                 -inf,
                 -inf,
-                negconst
+                negconst if not use_index else (-1, rr)
             ])
-    return ret
+    return np.array(ret)
 
 class iou_pairing_skipper:
     def __init__(self, conf_thresh=0.5):

@@ -18,11 +18,12 @@ class VideoSamplerDataset:
         self.data_list = []
         self.use_image = use_image
         for f in dirlist:
-            full_data: Dict = np.load(
-                os.path.join(f, 'result.npy'), allow_pickle=True).item()
+            full_data: Dict = np.load(f, allow_pickle=True).item()
             discount_index = int(len(full_data['car_count']) * discount)
             full_data['max_skip'] -= 1 # Make it compatible
-            for k in full_data:
+            if full_data['boxlists'][0] is None:
+                full_data['boxlists'][0] = []
+            for k in ['car_count', 'boxlists', 'max_skip']:
                 full_data[k] = full_data[k][:discount_index]
             self.data_list.append(full_data)
             self.current_frame_ptr.append(0)

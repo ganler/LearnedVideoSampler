@@ -231,28 +231,24 @@ ClipElement = namedtuple('ClipElement', ('data', 'max_size', 'labels'))
 
 
 class CASEvaluator:
-    def __init__(self, folder, fetch_size=32, combinator=opticalflow2tensor, max_diff=2, best=False):
+    def __init__(self, path, fetch_size=32, combinator=opticalflow2tensor, max_diff=2, best=False):
         self.clips: List[ClipElement] = []
         self.fetch_size = fetch_size
         self.video_cap_pool = dict()
         self.best = best
         self.combinator = combinator
         self.tolerant_diff = max_diff
-        item_list = [x for x in os.listdir(folder) if 'video0' in x]  # FIXME: ...
-        assert len(item_list) > 0
-        for f in tqdm(item_list):
-            if os.path.isdir(os.path.join(folder, f)):
-                path = os.path.join(folder, f)
-                raw_data = np.load(os.path.join(path, 'result.npy'), allow_pickle=True).item()
-                labels = raw_data['car_count']
-                max_size = len(labels)
-                if raw_data['src_path'] not in self.video_cap_pool.keys():
-                    self.video_cap_pool[raw_data['src_path']] = cv2.VideoCapture(raw_data['src_path'])
-                if self.combinator in [boxlist2tensor, boxembeddingpair, diff_encoder] or type(self.combinator) is iou_pairing_skipper:
-                    self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
-                else:
-                    self.clips.append(
-                        ClipElement(data=(raw_data['src_path'], raw_data['frame_ids'], raw_data['resolution']), max_size=max_size, labels=labels))
+
+        raw_data = np.load(path, allow_pickle=True).item()
+        labels = raw_data['car_count']
+        max_size = len(labels)
+        if raw_data['src_path'] not in self.video_cap_pool.keys():
+            self.video_cap_pool[raw_data['src_path']] = cv2.VideoCapture(raw_data['src_path'])
+        if self.combinator in [boxlist2tensor, boxembeddingpair, diff_encoder] or type(self.combinator) is iou_pairing_skipper:
+            self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
+        else:
+            self.clips.append(
+                ClipElement(data=(raw_data['src_path'], None, raw_data['resolution']), max_size=max_size, labels=labels))
 
     def evaluate(self, model, train_hook=None):
         ret_mae = []
