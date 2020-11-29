@@ -270,42 +270,55 @@ class CASEvaluator:
                 # [begin] [end]
                 if end == begin:
                     return
-                # [begin] [?] [end]
-                # [begin] [?] [?] [end]
-                if end - begin <= 2:
+                
+                if end - begin == 1 and predicted[begin] == -1:
                     predicted[begin] = c.labels[begin]
-                    predicted[end - 1] = c.labels[end - 1]
                     return
                 
                 skipped = False
-                if end - begin > 2:
-                    lc = c.labels[begin]
-                    rc = c.labels[end - 1]
-                    predicted[begin] = lc
-                    predicted[end - 1] = rc
-                    
-                    if abs(lc - rc) <= self.tolerant_diff:
-                        skip_or_not = None
-                        
-                        if self.best:
-                            skip_or_not = len(np.unique(c.labels[begin+1 : end-1])) < 2 and c.labels[begin+1] == lc
-                        elif type(self.combinator) is iou_pairing_skipper:
-                            skip_or_not = self.combinator.judge(fetch_one(begin), fetch_one(end - 1))
-                        else:
-                            inp = self.combinator(fetch_one(begin), fetch_one(end - 1)).cuda()
-                            skip_or_not = torch.max(
-                                model.forward(inp).data, 1)[1].cpu().numpy()[0] == True
+                lindex, rindex = None, None
+                real_begin, real_end = begin, end
+                if begin != 0 and predicted[begin-1] != -1:
+                    lindex = begin-1
+                else:
+                    lindex = begin
+                    predicted[lindex] = c.labels[lindex]
+                    real_begin += 1
+                
+                if end != c.max_size and predicted[end] != -1:
+                    rindex = end
+                else:
+                    rindex = end - 1
+                    predicted[rindex] = c.labels[rindex]
+                    real_end -= 1
+                
+                if real_begin == real_end:
+                    return
 
-                        if skip_or_not:
-                            predicted[begin+1 : end-1] = lc
-                            cur_errors[0] += np.abs(lc - c.labels[begin+1 : end-1]).sum()
-                            skipped_size += (end - begin - 1)
-                            skipped = True
+                lc, rc = c.labels[lindex], c.labels[rindex]
+                
+                if abs(lc - rc) <= self.tolerant_diff:
+                    skip_or_not = None
+                    
+                    if self.best:
+                        skip_or_not = len(np.unique(c.labels[real_begin:real_end])) < 2 and c.labels[real_begin] == lc
+                    elif type(self.combinator) is iou_pairing_skipper:
+                        skip_or_not = self.combinator.judge(fetch_one(lindex), fetch_one(rindex - 1))
+                    else:
+                        inp = self.combinator(fetch_one(lindex), fetch_one(rindex - 1)).cuda()
+                        skip_or_not = torch.max(
+                            model.forward(inp).data, 1)[1].cpu().numpy()[0] == True
+
+                    if skip_or_not: # Skip!
+                        predicted[real_begin:real_end] = lc
+                        cur_errors[0] += np.abs(lc - c.labels[real_begin:real_end]).sum()
+                        skipped_size += (real_end - real_begin)
+                        skipped = True
                 
                 if not skipped:
-                    partition = (end + begin) // 2
-                    CAS(begin + 1, partition, skipped_size, cur_errors)
-                    CAS(partition, end - 1, skipped_size, cur_errors)
+                    partition = (real_begin + real_end) // 2
+                    CAS(real_begin, partition, skipped_size, cur_errors)
+                    CAS(partition, real_end, skipped_size, cur_errors)
 
             begin_ = 0
             end_ = 0
