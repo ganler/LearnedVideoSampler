@@ -20,11 +20,12 @@ sys.path.append(project_dir)
 from utility.videoloader import VideoSamplerDataset
 import argparse
 from utility.common import *
+import multiprocessing as mp
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--period', type=float, default=1.2)
-parser.add_argument('--fixed_profile', type=float, default='0.05')
-parser.add_argument('--required_mae', type=float, default=0.15)
+parser.add_argument('--fixed_profile', type=float, default=0.05)
+parser.add_argument('--required_mae', nargs='+', type=float, default=[None])
 parser.add_argument('--action_space', type=int, default=32)
 parser.add_argument('--fixed_skipping', type=int, default=None)
 parser.add_argument('--src', type=str)
@@ -54,9 +55,10 @@ def get_best_skip_size(car_counts, required_mae):
             min_ = s + 1
         else:
             max_ = s
+    print(min_ - 1) 
     return min_ - 1
 
-if __name__ == '__main__':
+def eval(required_mae):
     skip_ratio = []
     mae_list = []
     test_data = VideoSamplerDataset(dirlist=[cfg.src], discount=1)
@@ -67,6 +69,8 @@ if __name__ == '__main__':
     skip_accum = 0
     prof_n = int(cfg.fixed_profile * len(test_data))
     period_n = int(cfg.period * len(test_data))
+
+    print(period_n, prof_n)
 
     predicted = None
     for (image, boxlists), (car_cnt, max_skip) in test_data:
@@ -82,7 +86,7 @@ if __name__ == '__main__':
             if first or period_cnt > period_n * prof_n:
                 car_cnt_data.append(car_cnt)
                 if len(car_cnt_data) == prof_n:
-                    predicted = get_best_skip_size(np.array(car_cnt_data), cfg.required_mae)
+                    predicted = get_best_skip_size(np.array(car_cnt_data), required_mae)
                     period_cnt = 0
                     first = False
                     car_cnt_data = [] # Repeat...
@@ -106,6 +110,26 @@ if __name__ == '__main__':
 
     # print(skip_ratio)
     # print(mae_list)
+    # print(cfg)
+    # print(f'AVG Skipping Ratio: {np.array(skip_ratio).mean()}')
+    # print(f'AVG MAE : {np.array(mae_list).mean()}')
+    return np.array(mae_list).mean(), np.array(skip_ratio).mean()
+
+if __name__ == "__main__":
     print(cfg)
-    print(f'AVG Skipping Ratio: {np.array(skip_ratio).mean()}')
-    print(f'AVG MAE : {np.array(mae_list).mean()}')
+    if cfg.required_mae[0] is not None:
+        cfg.required_mae = sorted(cfg.required_mae)
+    pool = mp.Pool(min(mp.cpu_count() - 1, len(cfg.required_mae)))
+    results = pool.map(eval, cfg.required_mae)
+    pool.close()
+
+    mae = [m for m, _ in results]
+    ratio = [r for _, r in results]
+    print(f'KEY{cfg.fixed_profile}k = [')
+    for t in cfg.required_mae:
+        print(f"'mae={t:.2f}',")
+    print(f']')
+    print(f'VAL{cfg.fixed_profile}v = {{')
+    print(f"'mae': {mae},")
+    print(f"'ratio': {ratio},")
+    print(f'}}')

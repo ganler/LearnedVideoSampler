@@ -9,6 +9,7 @@ import os
 import torch
 from utility.common import *
 from utility.improcessing import *
+import multiprocessing as mp
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
@@ -19,27 +20,17 @@ parser.add_argument('--npy', type=str)
 parser.add_argument('--tag', type=str, default=None)
 parser.add_argument('--fetch_size', type=int, default=16)
 parser.add_argument('--best', type=str2bool, default=False)
-parser.add_argument('--pretrained_backbone', type=str2bool, default=False)
-parser.add_argument('--iou_pairing', type=float, default=None)
+parser.add_argument('--iou_pairing', nargs='+', type=float, default=[None])
 parser.add_argument('--max_diff', type=int, default=2)
 parser.add_argument('--combinator', type=str, default='opticalflow', help='[opticalflow] [boxtensor] otherwise [concated image]')
 cfg = parser.parse_args()
 
-if cfg.iou_pairing is not None:
-    cfg.combinator = iou_pairing_skipper(conf_thresh=cfg.iou_pairing)
-elif cfg.combinator == 'boxtensor':
-    cfg.combinator = boxlist2tensor
-elif cfg.combinator == 'embedding':
-    cfg.combinator = boxembeddingpair
-else:
-    cfg.combinator = opticalflow2tensor if cfg.combinator == 'opticalflow' else concat3channel2tensor
-
-if __name__ == "__main__":
+def eval(thresh):
     evaluator = CASEvaluator(
         path=os.path.join(project_dir, cfg.npy), 
         fetch_size=cfg.fetch_size,
         max_diff=cfg.max_diff, 
-        combinator=cfg.combinator,
+        combinator=iou_pairing_skipper(conf_thresh=thresh),
         best=cfg.best)
 
     model = None
@@ -57,15 +48,30 @@ if __name__ == "__main__":
     #     model.eval()
     
     mae_list, skip_ratio = evaluator.evaluate(model)
-
-    mltag = f'ML-{cfg.tag}'
-    nonmltag = f'iou_pairing-tresh-{cfg.iou_pairing}'
-    tag = f'cas@{mltag if cfg.iou_pairing is None else nonmltag}'
     np.save(os.path.join(project_dir, f'{cfg.npy}.skip_ratio.npy'), skip_ratio)
-    np.save(os.path.join(project_dir, f'{cfg.npy}..mae_list.npy'), mae_list)
+    np.save(os.path.join(project_dir, f'{cfg.npy}.mae_list.npy'), mae_list)
 
+    # print(f'MAEs: {mae_list}')
+    # print(f'Skip Ratios: {skip_ratio}')
+    # print(f'AVG MAE: {mae_list.mean()}')
+    # print(f'AVG Skipping Ratio: {skip_ratio.mean()}')
+    return mae_list.mean(), skip_ratio.mean()
+
+if __name__ == "__main__":
     print(cfg)
-    print(f'MAEs: {mae_list}')
-    print(f'Skip Ratios: {skip_ratio}')
-    print(f'AVG MAE: {mae_list.mean()}')
-    print(f'AVG Skipping Ratio: {skip_ratio.mean()}')
+    if cfg.iou_pairing[0] is not None:
+        cfg.iou_pairing = sorted(cfg.iou_pairing)
+    pool = mp.Pool(min(mp.cpu_count() - 1, len(cfg.iou_pairing)))
+    results = pool.map(eval, cfg.iou_pairing)
+    pool.close()
+
+    mae = [m for m, _ in results]
+    ratio = [r for _, r in results]
+    print(f'betterpair{cfg.fetch_size}k = [')
+    for t in cfg.iou_pairing:
+        print(f"'thresh={t:.2f}',")
+    print(f']')
+    print(f'betterpair{cfg.fetch_size}v = {{')
+    print(f"'mae': {mae},")
+    print(f"'ratio': {ratio},")
+    print(f'}}')
