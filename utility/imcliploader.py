@@ -9,6 +9,7 @@ Dataloader in PyTorch Style.
 * This is used for imitation learning/simple machine learning.
 '''
 
+from application.carcounter.yolov3.utils.utils import box_iou
 from dataclasses import dataclass
 import random
 from numpy.core.numerictypes import maximum_sctype
@@ -25,7 +26,7 @@ from .improcessing import *
 from .improcessing import _boxlist2tensor_channelstack, _boxembedding
 from .common import *
 import cv2
-import multiprocessing
+from .f1compute import compute_f1
 from tqdm import tqdm
 
 from prefetch_generator import BackgroundGenerator
@@ -244,11 +245,10 @@ class CASEvaluator:
         max_size = len(labels)
         if raw_data['src_path'] not in self.video_cap_pool.keys():
             self.video_cap_pool[raw_data['src_path']] = cv2.VideoCapture(raw_data['src_path'])
-        if self.combinator in [boxlist2tensor, boxembeddingpair, diff_encoder] or type(self.combinator) is iou_pairing_skipper:
-            self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
-        else:
-            self.clips.append(
-                ClipElement(data=(raw_data['src_path'], None, raw_data['resolution']), max_size=max_size, labels=labels))
+        self.clips.append(ClipElement(data=raw_data['boxlists'], max_size=max_size, labels=labels))
+        for x in self.clips[-1].data:
+            if len(x.shape) == 1:
+                print(x)
 
     def evaluate(self, model, train_hook=None):
         ret_mae = []
@@ -256,6 +256,7 @@ class CASEvaluator:
         for cc in tqdm(self.clips):
             c = cc
             predicted = np.ones(c.max_size) * -1 # -1 is a flag.
+            pred_boxlists = [None] * c.max_size
 
             def fetch_one(index):
                 if self.combinator in [boxlist2tensor, boxembeddingpair, diff_encoder] or type(self.combinator) is iou_pairing_skipper:
@@ -273,6 +274,7 @@ class CASEvaluator:
                 
                 if end - begin == 1 and predicted[begin] == -1:
                     predicted[begin] = c.labels[begin]
+                    pred_boxlists[begin] = fetch_one(begin) #
                     return
                 
                 skipped = False
@@ -283,6 +285,7 @@ class CASEvaluator:
                 else:
                     lindex = begin
                     predicted[lindex] = c.labels[lindex]
+                    pred_boxlists[lindex] = fetch_one(lindex) #
                     real_begin += 1
                 
                 if end != c.max_size and predicted[end] != -1:
@@ -290,6 +293,7 @@ class CASEvaluator:
                 else:
                     rindex = end - 1
                     predicted[rindex] = c.labels[rindex]
+                    pred_boxlists[rindex] = fetch_one(rindex) #
                     real_end -= 1
                 
                 if real_begin == real_end:
@@ -311,6 +315,7 @@ class CASEvaluator:
 
                     if skip_or_not: # Skip!
                         predicted[real_begin:real_end] = lc
+                        pred_boxlists[real_begin:real_end] = fetch_one(lindex) #
                         cur_errors[0] += np.abs(lc - c.labels[real_begin:real_end]).sum()
                         skipped_size += (real_end - real_begin)
                         skipped = True
@@ -345,13 +350,18 @@ class CASEvaluator:
                 train_hook.processed += 1
                 train_hook.reset_for_next_clip()
 
-            bugs = (predicted < 0).nonzero()[0]
-            if len(bugs) != 0:
-                print(predicted)
-                print(bugs)
-                raise Exception('Bugs occurred: There are unchecked frames...')
+            # bugs = (predicted < 0).nonzero()[0]
+            # if len(bugs) != 0:
+            #     print(predicted)
+            #     print(bugs)
+            #     raise Exception('Bugs occurred: There are unchecked frames...')
 
-            predicted = np.array(predicted)
-            ret_mae.append(np.abs(predicted - c.labels).mean())
+            # predicted = np.array(predicted)
+            # ret_mae.append(np.abs(predicted - c.labels).mean())
+            for i in range(len(pred_boxlists)):
+                if len(pred_boxlists[i].shape) == 1:
+                    pred_boxlists[i] = pred_boxlists[i].unsqueeze(0)
+                val = compute_f1(pred_boxlists[i], c.data[i])
+                ret_mae.append(val)
             ret_skip.append(skipped_size[0] / len(c.labels))
         return np.array(ret_mae), np.array(ret_skip)
